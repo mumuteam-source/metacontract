@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.1;
+pragma solidity 0.8.1;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
 
 contract MetaCraftAuction {
+    using SafeMath for uint256;
     string public name;
-    IERC20 public currToken;
     IERC721 public itemToken;
     address private owner;
     struct Auction {
@@ -28,8 +31,12 @@ contract MetaCraftAuction {
         uint256 amount;
         uint256 bidAt;
     }
-
-    uint256 public totalHoldings = 0;
+    event AuctionEvents(
+        uint256 timeStamp,
+        address eventSender,          
+        string  eventName
+    );
+    //uint256 public totalHoldings = 0;
      
     uint256 public platformFee = 5;
     uint256 constant feePercentage = 100;
@@ -43,31 +50,30 @@ contract MetaCraftAuction {
     mapping(string  => address) public tokens;
     
     constructor() {
-       // currToken = IERC20(_currTokenAddress);
-        //itemToken = IERC721(_itemTokenAddress);
+
 	name = "MetaCraftAuction";
 	owner = msg.sender;
     }
     function setItemToken(address itemTokenAddress_) external {
         require(msg.sender==owner,"Only Owner Function!");
         itemToken = IERC721(itemTokenAddress_);
-    }
-    function setCurrToken(address currTokenAddress_) external {
-        require(msg.sender==owner,"Only Owner Function!");
-        currToken = IERC20(currTokenAddress_);
+        emit AuctionEvents(block.timestamp,msg.sender, "setItemToken");
     }
     function setWithDraw (address withDrawTo_) external{
         require(msg.sender==owner,"Only Owner Function!");
         withdrawAddress = withDrawTo_;
+         emit AuctionEvents(block.timestamp,msg.sender, "setWithDraw");
     }
     function setRecipAddr (address recipAddr_) external{
         require(msg.sender==owner,"Only Owner Function!");
         recipientAddr = recipAddr_;
+        emit AuctionEvents(block.timestamp,msg.sender, "setRecipAddr");
     }
 
     function setPlatformFee (uint256 platformFee_) external{
         require(msg.sender==owner,"Only Owner Function!");
         platformFee = platformFee_;
+        emit AuctionEvents(block.timestamp,msg.sender, "setPlatformFee");
     }
     
     /**  
@@ -79,9 +85,10 @@ contract MetaCraftAuction {
     returns (bool) 
     {  
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
-      tokens[symbol_] = address_;  
+      tokens[symbol_] = address_;
+      emit AuctionEvents(block.timestamp,msg.sender, "addNewToken");  
       return true;  
-    } 
+     } 
      /**  
      * @dev update address of token we changed
      */  
@@ -89,6 +96,7 @@ contract MetaCraftAuction {
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
       require(tokens[symbol_] != address(0));  
       tokens[symbol_] = address_;  
+      emit AuctionEvents(block.timestamp,msg.sender, "updateToken");
       return true;  
     }  
     /**  
@@ -97,7 +105,8 @@ contract MetaCraftAuction {
     function removeToken(string memory symbol_) public returns (bool) {  
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
       require(tokens[symbol_] != address(0));  
-      delete(tokens[symbol_]);  
+      delete(tokens[symbol_]); 
+      emit AuctionEvents(block.timestamp,msg.sender, "removeToken"); 
       return true;  
     }  
      event AuctionStatusChange(
@@ -174,7 +183,7 @@ contract MetaCraftAuction {
     function bidAuction(uint256 _tokenId) public payable {
         require(isBidValid(_tokenId, msg.value));
         Auction storage auction = tokenIdToAuction[_tokenId];
-        if(block.timestamp> auction.endTime) revert();
+        //if(block.timestamp> auction.endTime) revert();
 
     	require(msg.sender != auction.seller, "Owner can't bid");
         
@@ -182,18 +191,17 @@ contract MetaCraftAuction {
 	    address highestBidder = auction.highestBidder;
         require(msg.value > auction.highestBid);
         //require(balanceOf(msg.sender) >=msg.value, "insufficient balance");
-	    require(payable(msg.sender).balance >=msg.value, "insufficient balance");
+	    //require(payable(msg.sender).balance >=msg.value, "insufficient balance");
         if (msg.value > highestBid) {
             tokenIdToAuction[_tokenId].highestBid = msg.value;
             tokenIdToAuction[_tokenId].highestBidder = msg.sender;
-	    //require(currToken.approve(address(this), price), "Approve has failed");
-            //currToken.transferFrom(msg.sender,address(this),price);
+	
              // refund the last bidder
             if( highestBid > 0 ) {
-		//require(currToken.approve(address(this), highestBid), "Approve has failed");
-		//currToken.transferFrom(address(this),highestBidder, highestBid);
-		payable(highestBidder).transfer(highestBid);
-            }
+		
+		//payable(highestBidder).transfer(highestBid);
+        Address.sendValue(payable(highestBidder),highestBid);
+         }
 
 	    Bidder memory bidder =  
             Bidder({
@@ -211,8 +219,9 @@ contract MetaCraftAuction {
      function bidAuction(string memory symbol_,uint256 price_,uint256 _tokenId) public  {
         require(isBidValid(_tokenId, price_));
         Auction storage auction = tokenIdToAuction[_tokenId];
-        if(block.timestamp> auction.endTime) revert();
-
+        //if(block.timestamp> auction.endTime) revert();
+        require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
     	require(msg.sender != auction.seller, "Owner can't bid");
             
         uint256 highestBid = auction.highestBid;
@@ -251,21 +260,21 @@ contract MetaCraftAuction {
            "Should only be called by the seller"
         );
         require(block.timestamp >= auction.endTime);
+        require(auction.active,"Auction is not active");
         uint256 _bidAmount = auction.highestBid;
         address _bider = auction.highestBidder;
         
         if(_bidAmount == 0) {
             cancelAuction(_tokenId);
         } else {
-	
-            //require(currToken.approve(address(this), _bidAmount), "Approve has failed"); 
             uint256 receipientAmount =
-                (_bidAmount * platformFee) / feePercentage;
-            uint256 sellerAmount = _bidAmount - receipientAmount;
-	    //currToken.transferFrom(address(this),recipientAddr, receipientAmount);
-	    //currToken.transferFrom(address(this),auction.seller,sellerAmount);
-	     payable(recipientAddr).transfer(receipientAmount);
-         payable(auction.seller).transfer(sellerAmount);
+                _bidAmount.mul( platformFee).div( feePercentage);
+            uint256 sellerAmount = _bidAmount.sub( receipientAmount);
+
+	     //payable(recipientAddr).transfer(receipientAmount);
+         //payable(auction.seller).transfer(sellerAmount);
+         Address.sendValue(payable(recipientAddr),receipientAmount);
+         Address.sendValue(payable(auction.seller),sellerAmount);
 
             itemToken.transferFrom(address(this), _bider, _tokenId);
     	    tokenIdToAuction[_tokenId].finished = true;
@@ -282,7 +291,10 @@ contract MetaCraftAuction {
            msg.sender == auction.seller,
            "Should only be called by the seller"
         );
+        require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
         require(block.timestamp >= auction.endTime);
+        require(auction.active,"Auction is not active");
         uint256 _bidAmount = auction.highestBid;
         address _bider = auction.highestBidder;
         
@@ -325,7 +337,7 @@ contract MetaCraftAuction {
             block.timestamp >= startTime && block.timestamp <= endTime;
         bool bidAmountValid = _bidAmount >= price;
         bool sellerValid = seller != address(0);
-        return withinTime && bidAmountValid && sellerValid;
+        return withinTime && bidAmountValid && sellerValid && auction.active;
     }
 
     function getAuction(uint256 _tokenId)
@@ -386,9 +398,9 @@ contract MetaCraftAuction {
         
         // if there are bids refund the last bid
         if( amount > 0 ) {
-	    //require(currToken.approve(address(this), amount), "Approve has failed"); 
-            //currToken.transferFrom(address(this),bidder,amount);
-	     payable(bidder).transfer(amount);
+	   
+	     //payable(bidder).transfer(amount);
+         Address.sendValue(payable(bidder),amount);
   
         }
         
@@ -408,6 +420,8 @@ contract MetaCraftAuction {
                 msg.sender == auction.seller,
                 "Auction can be cancelled only by seller."
             );
+        require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
     	uint256 amount = auction.highestBid;
     	address bidder = auction.highestBidder;
            // require(block.timestamp <= auction.endTime, "Only be canceled before end");
@@ -486,20 +500,23 @@ contract MetaCraftAuction {
     **
     **/
     function totalBalance() external view returns(uint) {
-     //return currToken.balanceOf(address(this));
+    
+     //emit AuctionEvents(block.timestamp,msg.sender, "totalBalance");
      return payable(address(this)).balance;
      }
 
    function withdrawFunds() external withdrawAddressOnly() {
-     //require(currToken.approve(address(this), this.totalBalance()), "Approve has failed"); 
-     //currToken.transferFrom(address(this),msg.sender, this.totalBalance());
-       payable(msg.sender).transfer(this.totalBalance());
+    
+       //payable(msg.sender).transfer(this.totalBalance());
+       Address.sendValue(payable(msg.sender),this.totalBalance());
+       emit AuctionEvents(block.timestamp,msg.sender, "withdrawFunds");
    }
    
    function withdrawFunds(string memory symbol_) external withdrawAddressOnly() {
      require(IERC20(tokens[symbol_]).approve(address(this), IERC20(tokens[symbol_]).balanceOf(address(this))), "Approve has failed"); 
      IERC20(tokens[symbol_]).transferFrom(address(this),msg.sender, IERC20(tokens[symbol_]).balanceOf(address(this)));
       // payable(msg.sender).transfer(this.totalBalance());
+      emit AuctionEvents(block.timestamp,msg.sender, "withdrawFunds Coin");
    }
 
    modifier withdrawAddressOnly() {

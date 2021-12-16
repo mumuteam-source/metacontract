@@ -1,0 +1,98 @@
+Modification accoding to the Pre validation:
+1. MCA-01: Not change. As the Owner of this Contract is only the create of it. So other account could not has the owner role; And the withdrawAddress is set
+   by the owner of the contract, So it will be safe.
+2. MCA-02: Changed. This valuable is not used in the contract, we delete it.
+
+3. MCA-03: Changed, add a event emitter: AuctionEvents
+
+4. MCA-04: Changed. fixed to 0.8.1
+
+5. MCA-05: Changed, transfer to sendValue()
+
+6. MCA-06: Changed, delete the valuable currToken
+
+7. MCA-07: Changed, remove the require conflicted with isBidValid
+
+8. MCA-08: Changed, add require:require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
+
+9. MCA-09: Not Change. This function of finishAuction without a symbol of the chain, 
+           is set the bids with the default symbol of the chain(BNB in BSC, MATIC in Polygon and so on
+
+10. MCA-10: Changed. add the auction.active under the return of isBidValid.
+
+11. MCA-11: Changed Add require(auction.active,"Auction is not active") in finishAuction.
+
+12. MCA-12: Changed. Add require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
+
+13. MCA-13: Changed. Add  require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
+
+14. MCA-14: Changed. Removed it.
+
+15. MCA-15: Not Change. The receipentAddr is set by the owner(the creator of the creator), 
+            which is used for collecting the platform fee of auctions
+
+
+16. MCI-01: Not change. As the Owner of this Contract is only the create of it. 
+            So other account could not has the owner role; And the withdrawAddress is set
+            by the owner of the contract, So it will be safe.
+
+17. MCI-02: This contract could only be destroyed by the creator of it. 
+
+18. MCI-03: Changed. lock version to 0.8.1;
+
+19. MCI-04: Not Change. Yes, every on the platform could mint NFT tokens there. It's designed at begining.
+
+20. MCI-05: Not Change. We should transfer Tokens to another Contract like auction or trade for further transaction.
+            So it should use transferFrom here but not safeTransferFrom for ERC721 Tokens.
+
+21. MCT-01: Not change. As the Owner of this Contract is only the create of it. 
+            So other account could not has the owner role; And the withdrawAddress is set
+            by the owner of the contract, So it will be safe.
+
+22. MCT-02: Changed. Add TradeEvents;
+
+23. MCT-03: Changed. Fixed to 0.8.1;
+
+24. MCT-04: Not Change. Users Could not change Contract from the frontend of Metacraft.
+
+25. MCT-05: Changed. Change transfer to Address.sendValue();
+
+26. MCT-06: Not Change. the IERC20 transferFrom function in the Metacraft is safe.
+
+27. MCT-07: Changed. Use the sub, div ... of SafeMath.
+
+28. MCT-08: Changed. Delete the unused variable currencyToken.
+
+29. MCT-09: Changed. add require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(trade.symbol)),"Symbol is not correct");
+
+30. MCT-10: Not Change. This function of executeTrade without a symbol of the chain, 
+           is set the buy action with the default symbol of the chain(BNB in BSC, MATIC in Polygon and so on
+
+31. MCT-11: Not Change. the ItemToken of different Chain is set after the MetacraftTrade deployed. And this could only
+            be set by the owner of MetacraftTrade.
+
+32. MCT-12: Not Change. The NFT only be Trade when it not on trade, or Only be canceled when it on trade. The Metacraft Platform will control it with the contract.
+
+33. MCT-13: Not Change. The price user set could be greater than the trade.price. if the price set greater than the trade.price, it will be trade in the greater price.
+            This is up to the user want to buy it.
+
+34. MCT-14: Not Change. This destory function will only be called on the situation that the contract is not useful, and could only be executed by the owner. this will be safe.
+
+35. MCT-15: Not Change. The withdrawAddr is the address to collect the platform fee, this could only be set by the owner, it is safe here.
+
+36. NFT-01: Not Change. The Owner of this contract is only the one who create it.
+
+37. NFT-02: Changed. Change the variables to constant.
+
+38. NFT-03: Not Change. There is a event emitted OwnershipTransferred;
+
+39. NFT-04: Changed. Fixed to the version to 0.8.1.
+
+40. NFT-05: Not Change. Not change. The checkDelegate is check the msg.sender equals to the owner of the contract. It is the creator of the contract.
+	   
+41. NFT-06: Not Change. As the frontend platform will  allow users to call the transferFrom function behind only the Approve function.
+

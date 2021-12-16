@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.1;
+pragma solidity 0.8.1;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 
@@ -29,8 +30,6 @@ contract MetaCraftTrade {
 	   string  symbol,
 	   address buyer
 	   );
-
-    IERC20 currencyToken; //Do not use currency Token just now
     IERC721 itemToken;
 
     uint256 public platformFee = 5;
@@ -52,12 +51,15 @@ contract MetaCraftTrade {
 
     uint256 tradeCounter;
 
+    event TradeEvents(
+        uint256 timeStamp,
+        address eventSender,          
+        string  eventName
+    );
     constructor ()
          
     {
-        //currencyToken = IERC20(_currencyTokenAddress);
-        //itemToken = IERC721(_itemTokenAddress);
-        //tradeCounter = 0;
+        
 	name = "MetaCraftTrade";
 	owner = msg.sender;
     }
@@ -65,19 +67,19 @@ contract MetaCraftTrade {
     function setItemToken(address itemTokenAddress_) external {
         require(msg.sender==owner,"Only Owner Function!");
         itemToken = IERC721(itemTokenAddress_);
+        emit TradeEvents(block.timestamp,msg.sender,"setItemToken");
     }
-    function setCurrToken(address currTokenAddress_) external {
-        require(msg.sender==owner,"Only Owner Function!");
-        currencyToken = IERC20(currTokenAddress_);
-    }
+    
     function setWithDraw (address withDrawTo_) external{
         require(msg.sender==owner,"Only Owner Function!");
         withdrawAddress = payable(withDrawTo_);
+        emit TradeEvents(block.timestamp,msg.sender,"setWithDraw");
     }
 
      function setPlatformFee (uint256 platformFee_) external{
         require(msg.sender==owner,"Only Owner Function!");
         platformFee = platformFee_;
+        emit TradeEvents(block.timestamp,msg.sender,"setPlatformFee");
     }
     
      /**  
@@ -90,6 +92,7 @@ contract MetaCraftTrade {
     {  
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
       tokens[symbol_] = address_;  
+      emit TradeEvents(block.timestamp,msg.sender,"addNewToken");
       return true;  
     } 
      /**  
@@ -98,7 +101,8 @@ contract MetaCraftTrade {
     function updateToken(string memory symbol_,address address_) public returns (bool) {  
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
       require(tokens[symbol_] != address(0));  
-      tokens[symbol_] = address_;  
+      tokens[symbol_] = address_; 
+      emit TradeEvents(block.timestamp,msg.sender,"updateToken"); 
       return true;  
     }  
     /**  
@@ -107,7 +111,8 @@ contract MetaCraftTrade {
     function removeToken(string memory symbol_) public returns (bool) {  
       require(msg.sender == owner,"Only the owner of this Contract could do It!");
       require(tokens[symbol_] != address(0));  
-      delete(tokens[symbol_]);  
+      delete(tokens[symbol_]); 
+      emit TradeEvents(block.timestamp,msg.sender,"removeToken"); 
       return true;  
     }  
     
@@ -165,10 +170,11 @@ contract MetaCraftTrade {
         require(msg.sender != trade.poster,"Owner can't buy");
         itemToken.transferFrom(address(this), msg.sender, trade.item);
 	uint256 perf = (msg.value).mul(platformFee).div(feeBase);
-	payable(withdrawAddress).transfer(perf);
-	payable(trade.poster).transfer(msg.value-perf);
-	//currencyToken.transferFrom(msg.sender, trade.poster, perf);
-	//currencyToken.transferFrom(msg.sender, withdrawAddress, price-perf);
+	//payable(withdrawAddress).transfer(perf);
+    Address.sendValue(payable(withdrawAddress),perf);
+	//payable(trade.poster).transfer(msg.value-perf);
+    Address.sendValue(payable(trade.poster),msg.value.sub(perf));
+
 
         trades[_item].status = "Executed";
         emit TradeStatusChange(_item, "Executed",trade.poster,msg.value,trade.symbol, msg.sender);
@@ -188,12 +194,12 @@ contract MetaCraftTrade {
         require(trade.status == "Open", "Trade is not Open.");
 	    require(price_>= trade.price,"Can't Lower than Sell Price");
         require(msg.sender != trade.poster,"Owner can't buy");
+        require(keccak256(abi.encodePacked(symbol_)) == 
+                keccak256(abi.encodePacked(trade.symbol)),"Symbol is not correct");
         itemToken.transferFrom(address(this), msg.sender, trade.item);
     	uint256 perf =(price_).mul(platformFee).div(feeBase);
-    //	payable(withdrawAddress).transfer(perf);
-    //	payable(trade.poster).transfer(msg.value-perf);
-        require(IERC20(tokens[symbol_]).approve(trade.poster,  price_-perf), "Approve has failed"); 
-    	IERC20(tokens[symbol_]).transferFrom(msg.sender, trade.poster, price_-perf);
+        require(IERC20(tokens[symbol_]).approve(trade.poster,  price_.sub(perf)), "Approve has failed"); 
+    	IERC20(tokens[symbol_]).transferFrom(msg.sender, trade.poster, price_.sub(perf));
     	require(IERC20(tokens[symbol_]).approve(withdrawAddress,  perf), "Approve has failed"); 
     	IERC20(tokens[symbol_]).transferFrom(msg.sender, withdrawAddress, perf);
 
@@ -233,13 +239,16 @@ contract MetaCraftTrade {
 
    function withdrawFunds() external withdrawAddressOnly() {
      //currencyToken.transferFrom(address(this),msg.sender, currencyToken.balanceOf(address(this)));
-       payable(msg.sender).transfer(this.totalBalance());
+      // payable(msg.sender).transfer(this.totalBalance());
+      Address.sendValue(payable(msg.sender),this.totalBalance());
+       emit TradeEvents(block.timestamp,msg.sender,"withdrawFunds");
    }
     
     function withdrawFunds(string memory symbol_) external withdrawAddressOnly() {
      require(IERC20(tokens[symbol_]).approve(address(this), IERC20(tokens[symbol_]).balanceOf(address(this))), "Approve has failed"); 
      IERC20(tokens[symbol_]).transferFrom(address(this),msg.sender, IERC20(tokens[symbol_]).balanceOf(address(this)));
        //payable(msg.sender).transfer(this.totalBalance());
+    emit TradeEvents(block.timestamp,msg.sender,"withdrawFunds");
    }
    modifier withdrawAddressOnly() {
      require(msg.sender == withdrawAddress, 'only withdrawer can call this');
@@ -249,6 +258,11 @@ contract MetaCraftTrade {
    function destroy() virtual public {
 	require(msg.sender == owner,"Only the owner of this Contract could destroy It!");
         if (msg.sender == owner) selfdestruct(payable(owner));
+        
+        
+          
+        emit TradeEvents(block.timestamp,msg.sender,"destory");
     }
+   
    
 }

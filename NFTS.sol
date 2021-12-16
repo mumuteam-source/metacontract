@@ -1,10 +1,6 @@
-/**
- *Submitted for verification at Etherscan.io on 2021-04-15
-*/
-
 // SPDX-License-Identifier: MIT
 
-pragma solidity >=0.6.0 <0.9.0;
+pragma solidity 0.8.1;
 
 // ----------------------------------------------------------------------------
 // Safe maths
@@ -119,9 +115,9 @@ abstract contract MyOwned {
 contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     using MySafeMath for uint256;
 
-    string internal name_ = "NFTStore.Top"; 
-    string internal symbol_ = "NFTS";
-    uint256 internal  decimals_ = 18;
+    string constant name_ = "NFTStore.Top"; 
+    string constant symbol_ = "NFTS";
+    uint256 constant  decimals_ = 18;
     uint256 internal  totalSupply_ = 0;
     bool internal halted_ = false;
 
