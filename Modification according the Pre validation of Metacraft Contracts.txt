@@ -16,8 +16,8 @@ Modification accoding to the Pre validation:
 8. MCA-08: Changed, add require:require(keccak256(abi.encodePacked(symbol_)) == 
                 keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
 
-9. MCA-09: Not Change. This function of finishAuction without a symbol of the chain, 
-           is set the bids with the default symbol of the chain(BNB in BSC, MATIC in Polygon and so on
+9. MCA-09: Changed. require(keccak256(abi.encodePacked("Native")) ==
+	   keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
 
 10. MCA-10: Changed. add the auction.active under the return of isBidValid.
 

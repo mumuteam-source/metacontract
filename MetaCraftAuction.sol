@@ -186,7 +186,8 @@ contract MetaCraftAuction {
         //if(block.timestamp> auction.endTime) revert();
 
     	require(msg.sender != auction.seller, "Owner can't bid");
-        
+        require(keccak256(abi.encodePacked("Native")) ==
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
         uint256 highestBid = auction.highestBid;
 	    address highestBidder = auction.highestBidder;
         require(msg.value > auction.highestBid);
@@ -259,6 +260,8 @@ contract MetaCraftAuction {
            msg.sender == auction.seller,
            "Should only be called by the seller"
         );
+        require(keccak256(abi.encodePacked("Native")) ==
+                keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
         require(block.timestamp >= auction.endTime);
         require(auction.active,"Auction is not active");
         uint256 _bidAmount = auction.highestBid;
@@ -388,6 +391,8 @@ contract MetaCraftAuction {
                 msg.sender == auction.seller,
                 "Auction can be cancelled only by seller."
             );
+        require(keccak256(abi.encodePacked("Native")) ==
+            keccak256(abi.encodePacked(auction.symbol)),"Symbol is not correct");
     	uint256 amount = auction.highestBid;
     	address bidder = auction.highestBidder;
        // require(block.timestamp <= auction.endTime, "Only be canceled before end");
