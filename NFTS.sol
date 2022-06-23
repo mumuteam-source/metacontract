@@ -14,6 +14,12 @@ library MySafeMath {
         require(b <= a);
         c = a - b;
     }
+    function sub(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
+    require(b <= a, errorMessage);
+    uint256 c = a - b;
+
+    return c;
+  }
     function mul(uint256 a, uint256 b) internal pure returns (uint256 c) {
         if (a == 0) {
             revert();
@@ -25,27 +31,35 @@ library MySafeMath {
         require(b > 0);
         c = a / b;
     }
+    function div(uint256 a, uint256 b, string memory errorMessage) internal pure returns (uint256) {
+    // Solidity only automatically asserts when dividing by 0
+    require(b > 0, errorMessage);
+    uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+
+    return c;
+  }
 }
 
-// ----------------------------------------------------------------------------
-// ERC Token Standard #20 Interface
-// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-20-token-standard.md
-// ----------------------------------------------------------------------------
-abstract contract MyERC20Interface {
-    function totalSupply() external virtual view returns (uint256);
-    function balanceOf(address _tokenOwner) external virtual view returns (uint256 balance);
-    function allowance(address _tokenOwner, address _spender) external virtual view returns (uint256 remaining);
-    function transfer(address _to, uint256 _tokens) external virtual;
-    function approve(address _spender, uint256 _tokens) external virtual;
-    function transferFrom(address _from, address _to, uint256 _tokens) external virtual;
-    event Transfer(address indexed _from, address indexed _to, uint256 _tokens);
-    event Approval(address indexed _tokenOwner, address indexed _spender, uint256 _tokens);
+interface IBEP20 {
+ 
+  function totalSupply() external view returns (uint256);
+  function decimals() external view returns (uint8);
+  function symbol() external view returns (string memory);
+  function name() external view returns (string memory);
+  function balanceOf(address account) external view returns (uint256);
+  function transfer(address recipient, uint256 amount) external returns (bool);
+  function allowance(address _owner, address spender) external view returns (uint256);
+  function approve(address spender, uint256 amount) external returns (bool);
+  function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+  event Transfer(address indexed from, address indexed to, uint256 value);
+  event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
 // ----------------------------------------------------------------------------
 // Owned contract
 // ----------------------------------------------------------------------------
-abstract contract MyOwned {
+contract Ownable {
     address internal owner_;
     address internal newOwner_;
 
@@ -77,7 +91,7 @@ abstract contract MyOwned {
   * The Delegated contract allows a set of delegate accounts
   * to perform special tasks such as admin tasks to the contract
   */
- contract MyDelegated is MyOwned {
+ contract MyDelegated is Ownable {
     mapping (address => bool) delegates;
     
     event DelegateChanged(address delegate, bool state);
@@ -110,14 +124,14 @@ abstract contract MyOwned {
  }
 
 // ----------------------------------------------------------------------------
-// NFTStore.Top Token
+// MetaCraftToken
 // ----------------------------------------------------------------------------
-contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
+contract MetaCraftToken is IBEP20, MyDelegated {
     using MySafeMath for uint256;
 
-    string constant name_ = "NFTStore.Top"; 
-    string constant symbol_ = "NFTS";
-    uint256 constant  decimals_ = 18;
+    string public _name = "MetaCraftTEST"; 
+    string public _symbol = "MCRTTEST";
+    uint256 public  _decimals = 18;
     uint256 internal  totalSupply_ = 0;
     bool internal halted_ = false;
 
@@ -130,16 +144,16 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     constructor() {
     }
 
-    function name() external view returns (string memory) {
-        return name_;
+    function name() external override view returns (string memory) {
+     return _name;
     }
 
-    function symbol() external view returns (string memory) {
-        return symbol_;
+    function symbol() external override view returns (string memory) {
+        return _symbol;
     }
 
-    function decimals() external view returns (uint8) {
-        return uint8(decimals_);
+    function decimals() external override view returns (uint8) {
+        return uint8(_decimals);
     }
 
     function mint(address _to, uint256 _amount) external {
@@ -160,7 +174,6 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
         totalSupply_ = totalSupply_.sub(_amount);
         emit Transfer(_to, address(0), _amount);
     }
-
     // ------------------------------------------------------------------------
     // Set the halted tag when the emergent case happened
     // ------------------------------------------------------------------------
@@ -188,14 +201,12 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     // - Owner's account must have sufficient balance to transfer
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
-    function transfer(address _to, uint256 _tokens) external override {
-        require(!halted_);
 
-        balances_[msg.sender] = balances_[msg.sender].sub(_tokens);
-        balances_[_to] = balances_[_to].add(_tokens);
-
-        emit Transfer(msg.sender, _to, _tokens);
-    }
+     function transfer(address recipient, uint256 amount) external override returns (bool) {
+          require(!halted_);
+         _transfer(msg.sender, recipient, amount);
+    return true;
+  }
 
     // ------------------------------------------------------------------------
     // Token owner can approve for `spender` to transferFrom(...) `tokens`
@@ -205,14 +216,20 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     // recommends that there are no checks for the approval double-spend attack
     // as this should be implemented in user interfaces 
     // ------------------------------------------------------------------------
-    function approve(address _spender, uint256 _tokens) external override {
-        require(_spender != msg.sender);
-
+    function approve(address _spender, uint256 _tokens) external override returns(bool){
+        // require(_spender != msg.sender);
         allowed_[msg.sender][_spender] = _tokens;
-
         emit Approval(msg.sender, _spender, _tokens);
+        return true;
     }
 
+    function _approve(address owner, address spender, uint256 amount) internal {
+        require(owner != address(0), "MCRT: approve from the zero address");
+        require(spender != address(0), "MCRT: approve to the zero address");
+
+        allowed_[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+  }
     // ------------------------------------------------------------------------
     // Transfer `tokens` from the `from` account to the `to` account
     // 
@@ -222,16 +239,28 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     // - Spender must have sufficient allowance to transfer
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
-    function transferFrom(address _from, address _to, uint256 _tokens) external override {
-        require(!halted_);
+    function _transfer(address sender, address recipient, uint256 amount) internal {
+        require(sender != address(0), "MCRT: transfer from the zero address");
+        require(recipient != address(0), "MCRT: transfer to the zero address");
 
-        allowed_[_from][msg.sender] = allowed_[_from][msg.sender].sub(_tokens);
-        balances_[_from] = balances_[_from].sub(_tokens);
-        balances_[_to] = balances_[_to].add(_tokens);
-
-        emit Transfer(_from, _to, _tokens);
+        balances_[sender] = balances_[sender].sub(amount, "MCRT: transfer amount exceeds balance");
+        balances_[recipient] = balances_[recipient].add(amount);
+        emit Transfer(sender, recipient, amount);
     }
+    function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
+        _transfer(sender, recipient, amount);
+        _approve(sender, msg.sender, allowed_[sender][msg.sender].sub(amount, "BEP20: transfer amount exceeds allowance"));
+        return true;
+  }
+    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+        _approve(msg.sender, spender, allowed_[msg.sender][spender].add(addedValue));
+        return true;
+  }
 
+    function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+        _approve(msg.sender, spender, allowed_[msg.sender][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
+        return true;
+    }
     // ------------------------------------------------------------------------
     // Returns the amount of tokens approved by the owner that can be
     // transferred to the spender's account
@@ -245,6 +274,6 @@ contract NFTStoreTopToken is MyERC20Interface, MyDelegated {
     // ------------------------------------------------------------------------
     function transferAnyERC20Token(address _tokenAddress, uint256 _tokens) external {
         checkOwner(msg.sender);
-        MyERC20Interface(_tokenAddress).transfer(owner_, _tokens);
+        IBEP20(_tokenAddress).transfer(owner_, _tokens);
     }
 }
