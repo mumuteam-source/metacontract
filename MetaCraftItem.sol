@@ -28,6 +28,7 @@ contract MetaCraftItem is ERC721,  ERC721Enumerable, ERC721URIStorage  {
 	}
     
     function setBaseURI(string memory baseURI_) external {
+        require(msg.sender == owner,"Only the owner of this Contract Could Call this Function!");
         _baseURIextended = baseURI_;
     }
     

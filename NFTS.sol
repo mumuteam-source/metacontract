@@ -55,83 +55,91 @@ interface IBEP20 {
   event Transfer(address indexed from, address indexed to, uint256 value);
   event Approval(address indexed owner, address indexed spender, uint256 value);
 }
+contract Context {
+  // Empty internal constructor, to prevent people from mistakenly deploying
+  // an instance of this contract, which should be used via inheritance.
+  constructor ()  { }
 
+  function _msgSender() internal view returns (address payable) {
+    return payable(msg.sender);
+  }
+
+  function _msgData() internal view returns (bytes memory) {
+    this; // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
+    return msg.data;
+  }
+}
 // ----------------------------------------------------------------------------
 // Owned contract
 // ----------------------------------------------------------------------------
-contract Ownable {
-    address internal owner_;
-    address internal newOwner_;
+contract Ownable is Context {
+  address private _owner;
 
-    event OwnershipTransferred(address indexed _from, address indexed _to);
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-    constructor() {
-        owner_ = msg.sender;
-    }
+  /**
+   * @dev Initializes the contract setting the deployer as the initial owner.
+   */
+  constructor ()  {
+    address msgSender = _msgSender();
+    _owner = msgSender;
+    emit OwnershipTransferred(address(0), msgSender);
+  }
 
-    function owner() external view returns (address) {
-        return owner_;
-    }    
+  /**
+   * @dev Returns the address of the current owner.
+   */
+  function owner() public view returns (address) {
+    return _owner;
+  }
 
-    function transferOwnership(address _newOwner) external {
-        require(msg.sender == owner_);
-        newOwner_ = _newOwner;
-    }
+  /**
+   * @dev Throws if called by any account other than the owner.
+   */
+  modifier onlyOwner() {
+    require(_owner == _msgSender(), "Ownable: caller is not the owner");
+    _;
+  }
 
-    function acceptOwnership() external {
-        require(msg.sender == newOwner_);
-        emit OwnershipTransferred(owner_, newOwner_);
-        owner_ = newOwner_;
-        newOwner_ = address(0);
-    }
+  /**
+   * @dev Leaves the contract without owner. It will not be possible to call
+   * `onlyOwner` functions anymore. Can only be called by the current owner.
+   *
+   * NOTE: Renouncing ownership will leave the contract without an owner,
+   * thereby removing any functionality that is only available to the owner.
+   */
+  function renounceOwnership() public onlyOwner {
+    emit OwnershipTransferred(_owner, address(0));
+    _owner = address(0);
+  }
+
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   * Can only be called by the current owner.
+   */
+  function transferOwnership(address newOwner) public onlyOwner {
+    _transferOwnership(newOwner);
+  }
+
+  /**
+   * @dev Transfers ownership of the contract to a new account (`newOwner`).
+   */
+  function _transferOwnership(address newOwner) internal {
+    require(newOwner != address(0), "Ownable: new owner is the zero address");
+    emit OwnershipTransferred(_owner, newOwner);
+    _owner = newOwner;
+  }
 }
-
-/**
- * The /**
-  * The Delegated contract allows a set of delegate accounts
-  * to perform special tasks such as admin tasks to the contract
-  */
- contract MyDelegated is Ownable {
-    mapping (address => bool) delegates;
-    
-    event DelegateChanged(address delegate, bool state);
-
-    constructor() {
-    }
-
-    fallback() external {
-    }
-
-    function checkDelegate(address _user) internal view {
-        require(_user == owner_ || delegates[_user]);
-    }
-    
-    function checkOwner(address _user) internal view {
-        require(_user == owner_);
-    }
-    
-    function setDelegate(address _address, bool _state) external {
-        checkDelegate(msg.sender);
-
-        delegates[_address] = _state;
-        
-        emit DelegateChanged(_address, _state);
-    }
- 
-    function isDelegate(address _account) external view returns (bool delegate)  {
-        return (_account == owner_ || delegates[_account]);
-    }
- }
 
 // ----------------------------------------------------------------------------
 // MetaCraftToken
 // ----------------------------------------------------------------------------
-contract MetaCraftToken is IBEP20, MyDelegated {
+contract MetaCraftToken is Context, IBEP20, Ownable {
     using MySafeMath for uint256;
 
-    string public _name = "MetaCraftTEST"; 
-    string public _symbol = "MCRTTEST";
-    uint256 public  _decimals = 18;
+    string constant _name = "MetaCraftTEST"; 
+    string constant _symbol = "MCRTTEST";
+    uint256 constant  _decimals = 18;
     uint256 internal  totalSupply_ = 0;
     bool internal halted_ = false;
 
@@ -144,20 +152,20 @@ contract MetaCraftToken is IBEP20, MyDelegated {
     constructor() {
     }
 
-    function name() external override view returns (string memory) {
-     return _name;
+    function name() external  override pure returns (string memory) {
+      return _name;
     }
 
-    function symbol() external override view returns (string memory) {
+    function symbol() external override pure returns (string memory) {
         return _symbol;
     }
 
-    function decimals() external override view returns (uint8) {
+    function decimals() external override pure returns (uint8) {
         return uint8(_decimals);
     }
 
-    function mint(address _to, uint256 _amount) external {
-        checkDelegate(msg.sender);
+    function mint(address _to, uint256 _amount) external onlyOwner {
+       
         require(_to != address(0));
         require(_amount > 0);
 
@@ -166,10 +174,8 @@ contract MetaCraftToken is IBEP20, MyDelegated {
         emit Transfer(address(0), _to, _amount);
     }
 
-    function burn(address _to, uint256 _amount) external {
-        checkDelegate(msg.sender);
+    function burn(address _to, uint256 _amount) external onlyOwner {
         require(_amount > 0);
-
         balances_[_to] = balances_[_to].sub(_amount);
         totalSupply_ = totalSupply_.sub(_amount);
         emit Transfer(_to, address(0), _amount);
@@ -177,8 +183,7 @@ contract MetaCraftToken is IBEP20, MyDelegated {
     // ------------------------------------------------------------------------
     // Set the halted tag when the emergent case happened
     // ------------------------------------------------------------------------
-    function setEmergentHalt(bool _tag) external {
-        checkOwner(msg.sender);
+    function setEmergentHalt(bool _tag) external onlyOwner {
         halted_ = _tag;
     }
 
@@ -205,7 +210,7 @@ contract MetaCraftToken is IBEP20, MyDelegated {
      function transfer(address recipient, uint256 amount) external override returns (bool) {
           require(!halted_);
          _transfer(msg.sender, recipient, amount);
-    return true;
+         return true;
   }
 
     // ------------------------------------------------------------------------
@@ -248,16 +253,17 @@ contract MetaCraftToken is IBEP20, MyDelegated {
         emit Transfer(sender, recipient, amount);
     }
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
+        require(!halted_);
         _transfer(sender, recipient, amount);
         _approve(sender, msg.sender, allowed_[sender][msg.sender].sub(amount, "BEP20: transfer amount exceeds allowance"));
         return true;
   }
-    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+    function increaseAllowance(address spender, uint256 addedValue) external returns (bool) {
         _approve(msg.sender, spender, allowed_[msg.sender][spender].add(addedValue));
         return true;
   }
 
-    function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+    function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
         _approve(msg.sender, spender, allowed_[msg.sender][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
         return true;
     }
@@ -269,11 +275,4 @@ contract MetaCraftToken is IBEP20, MyDelegated {
         return allowed_[_tokenOwner][_spender];
     }
 
-    // ------------------------------------------------------------------------
-    // Owner can transfer out any accidentally sent ERC20 tokens
-    // ------------------------------------------------------------------------
-    function transferAnyERC20Token(address _tokenAddress, uint256 _tokens) external {
-        checkOwner(msg.sender);
-        IBEP20(_tokenAddress).transfer(owner_, _tokens);
-    }
 }
