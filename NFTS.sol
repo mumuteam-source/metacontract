@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity 0.8.1;
 
 // ----------------------------------------------------------------------------
@@ -132,24 +131,26 @@ contract Ownable is Context {
 }
 
 // ----------------------------------------------------------------------------
-// MetaCraftToken
+// MetaCraftProToken
 // ----------------------------------------------------------------------------
-contract MetaCraftToken is Context, IBEP20, Ownable {
+contract MetacraftToken is Context, IBEP20, Ownable {
     using MySafeMath for uint256;
-
-    string constant _name = "MetaCraftTEST"; 
-    string constant _symbol = "MCRTTEST";
-    uint256 constant  _decimals = 18;
-    uint256 internal  totalSupply_ = 0;
-    bool internal halted_ = false;
-
     mapping(address => uint256) internal balances_;
     mapping(address => mapping(address => uint256)) internal allowed_;
 
+
+    string constant _name = "Metacraft Token"; 
+    string constant _symbol = "MCTP";
+    uint256 constant  _decimals = 18;
+    uint256 internal  totalSupply_ = 1* 10**8 * 10**18;
+    
+    bool internal halted_ = false;
+    
     // ------------------------------------------------------------------------
     // Constructor
     // ------------------------------------------------------------------------
     constructor() {
+        balances_[msg.sender] = totalSupply_;    
     }
 
     function name() external  override pure returns (string memory) {
@@ -164,6 +165,7 @@ contract MetaCraftToken is Context, IBEP20, Ownable {
         return uint8(_decimals);
     }
 
+    /*
     function mint(address _to, uint256 _amount) external onlyOwner {
        
         require(_to != address(0));
@@ -173,7 +175,7 @@ contract MetaCraftToken is Context, IBEP20, Ownable {
         totalSupply_ = totalSupply_.add(_amount);
         emit Transfer(address(0), _to, _amount);
     }
-
+    */
     function burn(address _to, uint256 _amount) external onlyOwner {
         require(_amount > 0);
         balances_[_to] = balances_[_to].sub(_amount);
