@@ -231,8 +231,8 @@ contract MetacraftToken is Context, IBEP20, Ownable {
     }
 
     function _approve(address owner, address spender, uint256 amount) internal {
-        require(owner != address(0), "MCRT: approve from the zero address");
-        require(spender != address(0), "MCRT: approve to the zero address");
+        require(owner != address(0), "MCTP: approve from the zero address");
+        require(spender != address(0), "MCTP: approve to the zero address");
 
         allowed_[owner][spender] = amount;
         emit Approval(owner, spender, amount);
@@ -247,17 +247,17 @@ contract MetacraftToken is Context, IBEP20, Ownable {
     // - 0 value transfers are allowed
     // ------------------------------------------------------------------------
     function _transfer(address sender, address recipient, uint256 amount) internal {
-        require(sender != address(0), "MCRT: transfer from the zero address");
-        require(recipient != address(0), "MCRT: transfer to the zero address");
+        require(sender != address(0), "MCTP: transfer from the zero address");
+        require(recipient != address(0), "MCTP: transfer to the zero address");
 
-        balances_[sender] = balances_[sender].sub(amount, "MCRT: transfer amount exceeds balance");
+        balances_[sender] = balances_[sender].sub(amount, "MCTP: transfer amount exceeds balance");
         balances_[recipient] = balances_[recipient].add(amount);
         emit Transfer(sender, recipient, amount);
     }
     function transferFrom(address sender, address recipient, uint256 amount) external override returns (bool) {
         require(!halted_);
         _transfer(sender, recipient, amount);
-        _approve(sender, msg.sender, allowed_[sender][msg.sender].sub(amount, "BEP20: transfer amount exceeds allowance"));
+        _approve(sender, msg.sender, allowed_[sender][msg.sender].sub(amount, "MCTP: transfer amount exceeds allowance"));
         return true;
   }
     function increaseAllowance(address spender, uint256 addedValue) external returns (bool) {
@@ -266,7 +266,7 @@ contract MetacraftToken is Context, IBEP20, Ownable {
   }
 
     function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
-        _approve(msg.sender, spender, allowed_[msg.sender][spender].sub(subtractedValue, "BEP20: decreased allowance below zero"));
+        _approve(msg.sender, spender, allowed_[msg.sender][spender].sub(subtractedValue, "MCTP: decreased allowance below zero"));
         return true;
     }
     // ------------------------------------------------------------------------
