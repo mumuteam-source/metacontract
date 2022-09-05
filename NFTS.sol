@@ -150,7 +150,8 @@ contract MetacraftToken is Context, IBEP20, Ownable {
     // Constructor
     // ------------------------------------------------------------------------
     constructor() {
-        balances_[msg.sender] = totalSupply_;    
+        balances_[msg.sender] = totalSupply_;
+        emit Transfer(address(0), msg.sender, _totalSupply);    
     }
 
     function name() external  override pure returns (string memory) {
