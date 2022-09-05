@@ -165,24 +165,7 @@ contract MetacraftToken is Context, IBEP20, Ownable {
         return uint8(_decimals);
     }
 
-    /*
-    function mint(address _to, uint256 _amount) external onlyOwner {
-       
-        require(_to != address(0));
-        require(_amount > 0);
-
-        balances_[_to] = balances_[_to].add(_amount);
-        totalSupply_ = totalSupply_.add(_amount);
-        emit Transfer(address(0), _to, _amount);
-    }
    
-    function burn(address _to, uint256 _amount) external onlyOwner {
-        require(_amount > 0);
-        balances_[_to] = balances_[_to].sub(_amount);
-        totalSupply_ = totalSupply_.sub(_amount);
-        emit Transfer(_to, address(0), _amount);
-    } 
-    */
     // ------------------------------------------------------------------------
     // Set the halted tag when the emergent case happened
     // ------------------------------------------------------------------------
