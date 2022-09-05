@@ -140,7 +140,7 @@ contract MetacraftToken is Context, IBEP20, Ownable {
     string constant _name = "Metacraft Token"; 
     string constant _symbol = "MCTP";
     uint256 constant  _decimals = 18;
-    uint256 internal  totalSupply_ = 1* 10**8 * 10**18;
+    uint256 internal  totalSupply_ = 1 * 10**8 * 10**18;
     bool internal halted_ = false;
 
     mapping(address => uint256) internal balances_;
@@ -151,7 +151,7 @@ contract MetacraftToken is Context, IBEP20, Ownable {
     // ------------------------------------------------------------------------
     constructor() {
         balances_[msg.sender] = totalSupply_;
-        emit Transfer(address(0), msg.sender, _totalSupply);    
+        emit Transfer(address(0), msg.sender, totalSupply_);    
     }
 
     function name() external  override pure returns (string memory) {
