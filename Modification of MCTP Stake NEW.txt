@@ -1,0 +1,202 @@
+MCTP Stake Contract Audit revision 1st Edition:
+
+1* MCT-08 | Centralization Risks in `MCTP Stake NEW.sol`
+ not Changed: As the Owner of this Contract is only the create of it. So other account could not has the owner role; And the withdrawAddress is set by the owner of the contract, So it will be safe.
+--------------------------------------------
+2* MCT-09 | Rewards may be claimed repeatedly:
+Description
+In the upgradeStake() function, the contract calculates the user's reward using the remaining tokenAmount from oldstake, without updating the timestamp for reward reception afterward. This situation may allow the user to leverage the remaining tokenAmount from the current duration to repeatedly calculate and receive rewards.
+
+Answer: Fixed
+According the advice, we have added the oldstak.timestamp = block.timestamp;
+And we delete the function of upgradeStake, Because this function will no longer use in our Dapp;
+--------------------------------------------
+
+3* MCT-10 | Potential Dos Attack Caused by Malicious `itemToken`
+Description
+Within the contract, the totalStakeAmount variable signifies the current staked amount. However, in the openStake() function, there are no constraints on the parameters provided by the user, such as _itemToken and _tokenAmount.
+
+Answer:Fixed
+We change the totalStakeAmount from uint256 to an mapping(address=>uint256) public totalStakeAmount; 
+the same as the stakeAmount to the type of mapping(address=>mapping(uint256 => uint256)) public stakeAmounts;
+--------------------------------------------
+
+*4 MCT-11 | Function `transferFrom()` not recommended
+
+Description
+In an ERC20 contract, the transferFrom() or safeTransferFrom() function allows an authorized spender to transfer tokens on behalf of the owner. However, when the contract needs to transfer its own ERC20 tokens, it's recommended to use the transfer() or safeTransfer() function instead, because it is possible that the target token does not support transfer from the user itself.
+
+Answer:Fixed
+We import the SafeERC20 of the openzeppelin, and change the transferFrom functions like this:
+using SafeERC20 for IERC20;
+user deposit ERC20 tokens into contract:
+
+
+IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
+contract transfer ERC20 tokens to user address:
+IERC20(_itemToken).safeTransfer(oldstake.staker, stakeProfit);
+--------------------------------------------
+5* MCT-12 | Wrong use of `newDuration_in_days` in upgradeStake() function
+Description
+In the upgradeStake() function, users are allowed to upgrade their token staked from a lower to a higher duration level. The suggested upgradeable periods are 180, 356, and 730 days. Only when the duration is these three levels, users can get rewards by staking.
+--------------------------------------------
+Answer:Fixed
+1. we add a require in the function of upgradeStake:
+ require(_newDuration!=180 ||  _newDuration != 365 ||   _newDuration != 730,"new Duration days Error!");
+ check the newDuration should in the durations of 180/365 or 730;
+ and a require funciton like this:
+ require(_newDuration > _oldDuration,"New Duration should higher than Old one!");
+ check the new duration should higher than the old duration;
+2. We delete the upgradeStake function it is useless for current Dapp;
+--------------------------------------------
+6* MCT-13 | Incompatibility With Deflationary Tokens (Non-standard ERC20 Token)
+Description
+The project design may not be compatible with non-standard ERC20 tokens, such as deflationary tokens or rebase tokens.
+
+Answer: Our DAPP do not support the non-standard ERC20 tokens right now, so this contract will not consider this issue right now.
+--------------------------------------------
+7* MCT-14 | Divide Before Multiply
+Description
+When the duration is set to 730, it implies that the stakeAPY should adhere to the two-year rule, that is, multiply by 2. However, potential precision loss during division calculations may lead to discrepancies from the expected outcome.
+
+Answer: Fixed
+We multiply 2 before the divide of 100
+it now like this: 
+stakeAPY = oldstake.tokenAmount*two_APY*2/100; 
+in the duration case of 730.
+--------------------------------------------
+8* MCT-15 | Unchecked ERC-20 `transfer()`/`transferFrom()` Call
+Description
+The return values of the transfer() and transferFrom() calls in the smart contract are not checked.
+
+Answer:Fixed
+We import the SafeERC20 of the openzeppelin, and change the transferFrom functions like this:
+using SafeERC20 for IERC20;
+user deposit ERC20 tokens into contract:
+
+IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
+contract transfer ERC20 tokens to user address:
+IERC20(_itemToken).safeTransfer(oldstake.staker, stakeProfit);
+--------------------------------------------
+
+9 * MCT-16 | Unnecessary `approve()`
+Description
+When a user intends to stake or deposit, the ERC20 token is transferred from the user's account to the receiving contract. If the transferFrom() function is utilized, the user must pre-authorize the spender. However, the MCTPStake contract calls an unnecessary token.approve() for itself, it doesn't impact subsequent token transfers from user to this contract.
+
+Answer: Fixed
+We remove the unnecessary approve() of openStake() function. 
+it now like this of transfer ERC20 Tokens:
+require(_tokenAmount >= minStakeAmount,"stake tokenAmount too small!");
+//require(IERC20(_itemToken).approve(address(this), _tokenAmount), "Approval failed"); 
+IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
+--------------------------------------------
+10 * MCT-17 | Inconsistent Requirements in `openStake()`, `unStake()` and `reStake()`
+Description
+The unStake() function and reStake() function impose a restriction that prevents its execution by contracts, however, such a requirement is not present in the openStake() function. Consequently, contracts engaging in staking might encounter difficulties when attempting to unstake or restake their staked tokens.
+
+Answer: Fixed
+we use the notContract modifier in the function of openStake as well as the unStake and reStake functions
+--------------------------------------------
+11 *MCT-18 | Potential Inconsistent Decimals
+Description
+For ERC-20 tokens, the number of decimals can vary. A common standard is 18 decimals, just like ETH, but some tokens might use fewer. For instance, USDC, a popular stablecoin, uses 6 decimals.
+
+Answer: Fixed
+we add a public variable named decimals:
+uint256 public decimals = 18;
+and change the minStakeAmount like this:
+uint256 public minStakeAmount=10 * 10 ** decimals;   
+and owner can set the decimals in the function of SetParameters.
+--------------------------------------------
+12* MCT-19 | The Calculation of Rewards Lacks Consideration For the Time Difference.
+Description
+In the unStake() function, the parameter withDuration determines whether the user can unstake at any time. When withDuration is set to true, the unstake operation is restricted to occur outside the duration period.
+
+Answer: Fixed
+we add a check of duration for the time Difference like this:
+uint256 oldDuration_in_days = (block.timestamp-stake.timestamp)/SECONDS_IN_DAY; //SECONDS_IN_DAY
+if (oldDuration_in_days>=_duration) stakeProfit=payprofit;
+    else stakeProfit = payprofit*oldDuration_in_days/_duration;
+--------------------------------------------
+13* MCT-20 | `withDuration` can be bypassed through `upgradeStake()`
+Description
+In upgradeStake(), transitioning from a higher duration to a lower one is unrestricted. Consequently, if the user switches the current duration to 0, the duration check in unstake is effectively bypassed because it becomes 0.
+
+Answer: Fixed
+1. we add a require in the function of upgradeStake:
+ require(_newDuration > _oldDuration,"New Duration should higher than Old one!");
+ check the new duration should higher than the old duration;
+2. We delete the upgradeStake function it is useless for current Dapp;
+--------------------------------------------
+14*MCT-01 | Unnecessary Use of SafeMath
+Description
+The SafeMath library is used unnecessarily. With Solidity compiler versions 0.8.0 or newer, arithmetic operations will automatically revert in case of integer overflow or underflow.
+
+Answer: Fixed
+We change the SafeMath functions to the arithmetic operations like this:
+ if(_duration == 180)
+    payprofit = _tokenAmount*half_APY/100/2;  //half of year should divided by 2
+ if(_duration == 365) 
+    payprofit = _tokenAmount*full_APY/100;         // full year
+ if(_duration == 730)
+    payprofit = _tokenAmount*two_APY*2/100;  // two years should multiply by 2
+--------------------------------------------
+15* MCT-02 | Potential Reentrancy Issue
+Description
+A reentrancy attack can occur when the contract creates a function that makes an external call to another untrusted contract before resolving any effects. If the attacker can control the untrusted contract, they can make a recursive call back to the original function, repeating interactions that would have otherwise not run after the external call resolved the effects.
+Answer: Fixed
+We imported the OpenZeppelin ReentrancyGuard library 
+and use the nonReentrant modifier 
+in functions like openStake and upgradeStake, then we delete the upgradeStake Function as metioned before;
+--------------------------------------------
+16*MCT-21 | Missing Zero Address Validation
+Description
+Addresses are not validated before assignment or external calls, potentially allowing the use of zero addresses and leading to unexpected behavior or vulnerabilities. For example, transferring tokens to a zero address can result in a permanent loss of those tokens.
+
+Answer: Fixed
+we added a check in the setParameters Function.
+require(_withdrawAddress != address(0),"Zero Address Error!");
+--------------------------------------------
+17 *MCT-03 | Discussion on tokenAmount used when calculating `stakeAPY`
+In the upgradeStake() function, users have the option to upgrade the token amount from the current duration to another duration. Currently, in the upgradeStake() function, the tokenAmount slated for upgrade is deducted from oldstake initially, and the remaining token reward is then calculated and disbursed to the user. This process results in the reward for the upgraded tokenAmount never being calculated and claimed.
+
+Answer: Fixed
+
+1. we move the  oldstake.tokenAmount -= _tokenAmount; centence down after the caculation of stakeAPY.
+2. we delete the upgradeStake function
+--------------------------------------------
+18 * MCT-04 | Inconsistency Usage of `hasStake`
+Description
+In the getStakeStatus() function, users can provide a tokenAddress to query the hasStake status. However, at the end of the openStake() function, the hasStake[msg.sender] status, indicating whether the user has staked, is modified to true.
+Answer: Fixed
+the hasStake status is used to check whether a user staked any tokens
+--------------------------------------------
+19* MCT-05 | Discussion about `reStake()`
+Description
+Upon reviewing the reStake() function, it was observed that the contract calculates and transfers the user's rewards and then re-stakes the previously staked tokenAmount to the contract again, with the only alteration being the timestamp.
+
+Answer: Fixed
+reStake is under the situation that some stakes reached the maturity status, they can restake a same duartion of stake, in this time, the reward of last matured stake should send to user, and a same duration of new stake begin from now on.
+--------------------------------------------
+20 *MCT-06 | Concerns about `itemToken` type and reward distribution
+Description
+When users stake or distribute items, they specify the itemToken. Therefore, we need to check the following points with the team:
+
+1.If there is documentation specifying the itemToken type when users stake or claim? Using arbitrary tokens may pose potential risks, such as Unchecked ERC-20 transfer()/transferFrom() Call and Potential Reentrancy Issue.
+Answer: the itemToken type is a statard ERC-20 Token named MCTP issued on Chain.
+do not related to other itemToken types.
+
+2.The source of the reward token sent to the user when staking or unstaking. If there is no sufficient deposited itemToken in the contract, this scenario creates a situation where the payouts for the initial users (like User A) are dependent on the deposits made by the newer users (like User B). If the inflow of new stakes ceases or slows, the contract will not have enough tokens to pay out the rewards or return the stakes, characterizing a Ponzi scheme dynamic.
+Answer:
+the administrator of this Stake Dapp will deposit or transfer enough tokens for user to unstaking and the rewards.
+--------------------------------------------
+21 * MCT-07 | Discussion about different `duration` level
+Description
+Upon reviewing the getUserAllStake() function, we observed that it allows users to query seven different duration levels, and users can specify any duration when staking and unstaking. However, only three duration levels—180, 365, and 730—entitle users to claim rewards.
+
+We need to confirm with the team if there are rewards mechanisms in place for other duration levels.
+Answer: 
+In this Contract there are 7 different durations, but in the current Dapp, we only open 3 durations as 180,365 and 730 days, other duration will not use in current Dapp.
+--------------------------------------------
+
+

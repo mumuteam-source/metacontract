@@ -8,7 +8,8 @@ import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 
 /**
@@ -19,13 +20,15 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * implemented. The item tokenization is responsibility of the ERC721 contract
  * which should encode any item details.
  */
-contract MCTPStake is Pausable {
+contract MCTPStake is Pausable, ReentrancyGuard {
       
-    using SafeMath for uint256;
+    //using SafeMath for uint256;
+    using SafeERC20 for IERC20;
     string public name;
-    uint256 public minStakeAmount=10 * 10 ** 18;   
+    uint256 public decimals = 18;
+    uint256 public minStakeAmount=10 * 10 ** decimals;   
     
-    uint256 public totalStakeAmount;   
+   
     uint256 public payedProfits;
     bool public withDuration; //if True,unstake must not whthin the duration; Else, can unstake anytime
     
@@ -51,8 +54,10 @@ contract MCTPStake is Pausable {
         uint256 timestamp;
     }
 
-    //stakeAmounts[0],180,365==>Amount
-    mapping(uint256 => uint256) public stakeAmounts;
+    
+    mapping(address=>uint256) public totalStakeAmount; 
+    //stakeAmounts[tokenAddress][0],180,365==>Amount
+    mapping(address=>mapping(uint256 => uint256)) public stakeAmounts;
     //[tokenAddress][userAddress][duration]==>Stake[]
     mapping(address => mapping(address => mapping(uint256=> Stake))) public stakes;
     mapping(address=>bool) private hasStake;
@@ -80,13 +85,15 @@ contract MCTPStake is Pausable {
         withDuration=true;
         locked = false;
     }
-    function setParamaters ( address _withdrawAddress,uint256 _minStakeAmount)
+    function setParamaters ( address _withdrawAddress,uint256 _decimals,uint256 _minStakeAmount)
     public
     whenNotPaused
     {
         require(msg.sender==owner,"Only owner can set Parameters");
+        require(_withdrawAddress != address(0),"Zero Address Error!");
         withdrawAddress = payable(_withdrawAddress);
-        minStakeAmount = _minStakeAmount;
+        decimals = _decimals;
+        minStakeAmount = _minStakeAmount * 10 ** _decimals;
         emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
     }
 
@@ -133,17 +140,17 @@ contract MCTPStake is Pausable {
         returns(Stake memory stake)
     {
         stake = stakes[itemToken][staker][duration];
-        uint256 oldDuration_in_days = (block.timestamp.sub(stake.timestamp)).div(SECONDS_IN_DAY); //SECONDS for REAL 
+        uint256 oldDuration_in_days = (block.timestamp-stake.timestamp)/SECONDS_IN_DAY; //SECONDS for REAL 
             
         uint256 stakeAPY = 0;
         if(duration == 180)
-            stakeAPY = stake.tokenAmount.mul(half_APY).div(100).div(2); //half year
+            stakeAPY = stake.tokenAmount*half_APY/100/2; //half year
         if(duration == 365) 
-            stakeAPY = stake.tokenAmount.mul(full_APY).div(100); // full year
+            stakeAPY = stake.tokenAmount*full_APY/100; // full year
         if(duration == 730)
-            stakeAPY = stake.tokenAmount.mul(two_APY).div(100).mul(2); // two years should multiply by 2
+            stakeAPY = stake.tokenAmount*two_APY*2/100; // two years should multiply by 2
 
-        uint256 stakeProfit = stakeAPY.mul(oldDuration_in_days).div(duration);
+        uint256 stakeProfit = stakeAPY*oldDuration_in_days/duration;
         
         if (oldDuration_in_days >= duration) stake.reward = stakeAPY;
         else stake.reward = stakeProfit;
@@ -170,25 +177,25 @@ contract MCTPStake is Pausable {
 
         for( uint256 i=0;i<7;i++){
 
-            uint256 duration_in_days = (block.timestamp.sub(stake[i].timestamp)).div(SECONDS_IN_DAY); //SECONDs
+            uint256 duration_in_days = (block.timestamp-stake[i].timestamp)/SECONDS_IN_DAY; 
             uint256 stakeProfit=0;
             uint256 stakeAPY = 0;
             uint256 duration = 1;
             if(i == 4) {
                 duration = 180;
-                stakeAPY = stake[i].tokenAmount.mul(half_APY).div(100).div(2); //half year
+                stakeAPY = stake[i].tokenAmount*half_APY/100/2; //half year
             }
             if(i == 5) {
                 duration = 365;
-                stakeAPY = stake[i].tokenAmount.mul(full_APY).div(100); // full year
+                stakeAPY = stake[i].tokenAmount*full_APY/100; // full year
             }    
             if(i == 6){
                 duration = 730;
-                stakeAPY = stake[i].tokenAmount.mul(two_APY).div(100).mul(2); // two years should multiply by 2
+                stakeAPY = stake[i].tokenAmount*two_APY*2/100; // two years should multiply by 2
             }
                 
 
-            stakeProfit = stakeAPY.mul(duration_in_days).div(duration);
+            stakeProfit = stakeAPY*duration_in_days/duration;
             
             if (duration_in_days >= duration) stake[i].reward = stakeAPY;
             else stake[i].reward = stakeProfit;
@@ -199,29 +206,29 @@ contract MCTPStake is Pausable {
         return (userAmount,stake);
     }
 
-    function getStakeAmount() 
+    function getStakeAmount(address _itemToken) 
         public 
         virtual
         view 
         returns (uint256, uint256[] memory)
     {
         uint256[] memory  stakeamount = new uint256[](7);
-        stakeamount[0]=stakeAmounts[0];
-        stakeamount[1]=stakeAmounts[30];
-        stakeamount[2]=stakeAmounts[60];
-        stakeamount[3]=stakeAmounts[90];
-        stakeamount[4]=stakeAmounts[180];
-        stakeamount[5]=stakeAmounts[365];
-        stakeamount[6]=stakeAmounts[730];
-        return (totalStakeAmount,stakeamount);
+        stakeamount[0]=stakeAmounts[_itemToken][0];
+        stakeamount[1]=stakeAmounts[_itemToken][30];
+        stakeamount[2]=stakeAmounts[_itemToken][60];
+        stakeamount[3]=stakeAmounts[_itemToken][90];
+        stakeamount[4]=stakeAmounts[_itemToken][180];
+        stakeamount[5]=stakeAmounts[_itemToken][365];
+        stakeamount[6]=stakeAmounts[_itemToken][730];
+        return (totalStakeAmount[_itemToken],stakeamount);
     }
-    function getTotalStakeAmount()
+    function getTotalStakeAmount(address _itemToken)
         public
         virtual
         view
         returns (uint256)
        {
-           return totalStakeAmount;
+           return totalStakeAmount[_itemToken];
        } 
     function getStakeStatus (address _tokenAddress)
         public
@@ -250,12 +257,14 @@ contract MCTPStake is Pausable {
         )
         public
         whenNotPaused
+        nonReentrant //anti re-entrancy
+        notContract(msg.sender) //anti contract address
         virtual
     {
        
         require(_tokenAmount >= minStakeAmount,"stake tokenAmount too small!");
-        require(IERC20(_itemToken).approve(address(this), _tokenAmount), "Approval failed"); 
-        IERC20(_itemToken).transferFrom(msg.sender, address(this), _tokenAmount); 
+        //require(IERC20(_itemToken).approve(address(this), _tokenAmount), "Approval failed"); 
+        IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
         Stake storage oldstake = stakes[_itemToken][msg.sender][_duration];
         
         // stake more coins for a staking stage
@@ -263,25 +272,25 @@ contract MCTPStake is Pausable {
             
             require(_tokenAmount >=  oldstake.tokenAmount, "stake Amount cant not less then current Amount!");
 
-            uint256 oldDuration_in_days = (block.timestamp.sub(oldstake.timestamp)).div(SECONDS_IN_DAY); //SECONDS_IN_DAY
+            uint256 oldDuration_in_days = (block.timestamp-oldstake.timestamp)/SECONDS_IN_DAY;
             
             uint256 stakeAPY = 0;
             uint256 stakeProfit=0;
             if(_duration == 180)
-                stakeAPY = oldstake.tokenAmount.mul(half_APY).div(100).div(2); //half year
+                stakeAPY = oldstake.tokenAmount*half_APY/100/2; //half year
             if(_duration == 365) 
-                stakeAPY = oldstake.tokenAmount.mul(full_APY).div(100); // full year
+                stakeAPY = oldstake.tokenAmount*full_APY/100; // full year
             if(_duration == 730)
-                stakeAPY = oldstake.tokenAmount.mul(two_APY).div(100).mul(2); // two years should multiply by 2
+                stakeAPY = oldstake.tokenAmount*two_APY*2/100; // two years should multiply by 2
 
              
             if (oldDuration_in_days>=_duration) stakeProfit=stakeAPY;
-            else stakeProfit = stakeAPY.mul(oldDuration_in_days).div(_duration);
+            else stakeProfit = stakeAPY*oldDuration_in_days/_duration;
 
 
             payedProfits += stakeProfit;
-            require(IERC20(_itemToken).approve(address(this), stakeProfit), "Approve has failed"); 
-            IERC20(_itemToken).transferFrom(address(this), oldstake.staker, stakeProfit);
+            //require(IERC20(_itemToken).approve(address(this), stakeProfit), "Approve has failed"); 
+            IERC20(_itemToken).safeTransfer(oldstake.staker, stakeProfit);
 
             oldstake.tokenAmount += _tokenAmount;
             oldstake.reward = 0;
@@ -299,93 +308,10 @@ contract MCTPStake is Pausable {
             stakes[_itemToken][msg.sender][_duration] = stake;
         }
 
-        totalStakeAmount+=_tokenAmount;
-        stakeAmounts[_duration]+=_tokenAmount;
+        totalStakeAmount[_itemToken]+=_tokenAmount;
+        stakeAmounts[_itemToken][_duration]+=_tokenAmount;
         hasStake[msg.sender] = true;
         emit StakeStatusChange(_itemToken,_tokenAmount, "Stake",msg.sender,_duration,block.timestamp);
-
-    }
-    // upgrade stake need not transfer MCTP in to contract, Just Upgrade the Plan from lower duration to higher Duration Level
-    function upgradeStake(
-        address _itemToken,
-        uint256 _tokenAmount,
-        uint256 _oldDuration,
-        uint256 _newDuration
-        )
-        public
-        whenNotPaused
-        virtual
-    {
-        
-        require(_tokenAmount >= minStakeAmount,"stake tokenAmount too small!");
-
-        //IERC20(_itemToken).transferFrom(msg.sender, address(this), _tokenAmount); 
-        Stake storage oldstake = stakes[_itemToken][msg.sender][_oldDuration];
-        Stake storage newstake = stakes[_itemToken][msg.sender][_newDuration];
-        require(oldstake.staker == msg.sender, "staker address has no stake before in this duration");
-       
-
-        oldstake.tokenAmount -= _tokenAmount;
-        
-        uint256 oldDuration_in_days = (block.timestamp.sub(oldstake.timestamp)).div(SECONDS_IN_DAY); ///Seconds
-            
-        uint256 stakeAPY = 0;
-        uint256 stakeProfit=0;
-        if(_oldDuration == 180)
-            stakeAPY = oldstake.tokenAmount.mul(half_APY).div(100).div(2); //half year
-        if(_oldDuration == 365) 
-            stakeAPY = oldstake.tokenAmount.mul(full_APY).div(100); // full year
-        if(_oldDuration == 730)
-            stakeAPY = oldstake.tokenAmount.mul(two_APY).div(100).mul(2); // two years should multiply by 2
-        
-        if (oldDuration_in_days>=_oldDuration) stakeProfit=stakeAPY;
-        else stakeProfit = stakeAPY.mul(oldDuration_in_days).div(_oldDuration);
-       
-        payedProfits += stakeProfit;
-        require(IERC20(_itemToken).approve(address(this), stakeProfit), "Approve has failed"); 
-        IERC20(_itemToken).transferFrom(address(this), oldstake.staker, stakeProfit);
-        oldstake.reward = 0;
-        //totalStakeAmount -=_tokenAmount;
-       if(newstake.staker == msg.sender){
-
-             require(_tokenAmount >=  newstake.tokenAmount, "stake Amount cant not less then current Amount!");
-            //the new stake reward until this transaction: 
-            uint256 newDuration_in_days = (block.timestamp.sub(newstake.timestamp)).div(SECONDS_IN_DAY); ///Seconds     
-            uint256 newstakeAPY = 0;
-            uint256 newstakeProfit=0;
-            if(newDuration_in_days == 180)
-                newstakeAPY = newstake.tokenAmount.mul(half_APY).div(100).div(2); //half year
-            if(newDuration_in_days == 365) 
-                newstakeAPY = newstake.tokenAmount.mul(full_APY).div(100); // full year
-            if(newDuration_in_days == 730)
-                newstakeAPY = newstake.tokenAmount.mul(two_APY).div(100).mul(2); // two years should multiply by 2
-            
-            if (newDuration_in_days>=_newDuration) newstakeProfit=newstakeAPY;
-            else newstakeProfit = newstakeAPY.mul(newDuration_in_days).div(_newDuration);
-        
-            payedProfits += newstakeProfit;
-            require(IERC20(_itemToken).approve(address(this), newstakeProfit), "Approve has failed"); 
-            IERC20(_itemToken).transferFrom(address(this), newstake.staker, newstakeProfit);
-
-            newstake.tokenAmount += _tokenAmount;
-            newstake.reward = 0;
-            newstake.timestamp = block.timestamp;
-        }else {
-            Stake memory stake = 
-                Stake({
-                itemToken: _itemToken,
-                staker: msg.sender,
-                tokenAmount: _tokenAmount,
-                duration: _newDuration,
-                reward : 0,
-                timestamp:block.timestamp
-            });
-            stakes[_itemToken][msg.sender][_newDuration] = stake;
-        }
-        //totalStakeAmount+=_tokenAmount;
-        stakeAmounts[_newDuration]+=_tokenAmount;
-        stakeAmounts[_oldDuration]-=_tokenAmount;
-        emit StakeStatusChange(_itemToken,_tokenAmount, "UpgradeStake",msg.sender,_newDuration,block.timestamp);
 
     }
 
@@ -396,7 +322,7 @@ contract MCTPStake is Pausable {
     function unStake(address _itemToken,uint256 _tokenAmount,uint256 _duration)
         public
         whenNotPaused
-        noReentrancy //anti re-entrancy
+        nonReentrant //anti re-entrancy
         notContract(msg.sender) //anti contract address
         virtual
     {
@@ -409,32 +335,37 @@ contract MCTPStake is Pausable {
             stake.tokenAmount >=_tokenAmount,
             "Stake token Amount insufficient."
         );
+
         if(withDuration){
             require(
             block.timestamp - stake.timestamp >= _duration * 1 days,    //days for real project 
             string(abi.encodePacked("UnStake should be More than ",_duration," Days"))
             );
         }
-        
+        uint256 stakeProfit=0;
         uint256 payprofit = 0;
         if(_duration == 180)
-            payprofit = _tokenAmount.mul(half_APY).div(100).div(2);  //half of year should divided by 2
+            payprofit = _tokenAmount*half_APY/100/2;  //half of year should divided by 2
         if(_duration == 365) 
-            payprofit = _tokenAmount.mul(full_APY).div(100);         // full year
+            payprofit = _tokenAmount*full_APY/100;         // full year
         if(_duration == 730)
-           payprofit = _tokenAmount.mul(two_APY).div(100).mul(2);  // two years should multiply by 2
+           payprofit = _tokenAmount*two_APY*2/100;  // two years should multiply by 2
         
-        payedProfits += payprofit;
-        uint256 payAmount =  _tokenAmount.add(payprofit);
-        require(IERC20(_itemToken).approve(address(this), payAmount), "Approve has failed");      
-        IERC20(_itemToken).transferFrom(address(this), stake.staker, payAmount);
+        uint256 oldDuration_in_days = (block.timestamp-stake.timestamp)/SECONDS_IN_DAY;
+        if (oldDuration_in_days>=_duration) stakeProfit=payprofit;
+        else stakeProfit = payprofit*oldDuration_in_days/_duration;
+
+        payedProfits += stakeProfit;
+        uint256 payAmount =  _tokenAmount+stakeProfit;
+        //require(IERC20(_itemToken).approve(address(this), payAmount), "Approve has failed");      
+       IERC20(_itemToken).safeTransfer( stake.staker, payAmount);
 
         stake.tokenAmount -= _tokenAmount;
         stake.reward = 0;
         stake.timestamp = block.timestamp;
 
-        totalStakeAmount-=_tokenAmount;
-        stakeAmounts[_duration]-=_tokenAmount;
+        totalStakeAmount[_itemToken]-=_tokenAmount;
+        stakeAmounts[_itemToken][_duration]-=_tokenAmount;
         emit StakeStatusChange(_itemToken,_tokenAmount, "UnStake", msg.sender,_duration,block.timestamp);
     }
     
@@ -445,7 +376,7 @@ contract MCTPStake is Pausable {
     function reStake(address _itemToken,uint256 _duration)
         public
         whenNotPaused
-        noReentrancy //anti re-entrancy
+        nonReentrant //anti re-entrancy
         notContract(msg.sender) //anti contract address
         virtual
     {
@@ -461,17 +392,24 @@ contract MCTPStake is Pausable {
             string(abi.encodePacked("reStake should be More than ",_duration," Days"))
             );
         }
+        uint256 stakeProfit=0;
         uint256 payprofit = 0;
-       if(_duration == 180)
-            payprofit = _tokenAmount.mul(half_APY).div(100).div(2);  //half of year 
+        if(_duration == 180)
+            payprofit = _tokenAmount*half_APY/100/2;  //half of year 
         if(_duration == 365) 
-            payprofit = _tokenAmount.mul(full_APY).div(100);         // full year
+            payprofit = _tokenAmount*full_APY/100;         // full year
         if(_duration == 730)
-           payprofit = _tokenAmount.mul(two_APY).div(100).mul(2);  // two years
+           payprofit = _tokenAmount*two_APY*2/100;  // two years
 
-        payedProfits += payprofit;
-        require(IERC20(_itemToken).approve(address(this), payprofit), "Approve has failed"); 
-        IERC20(_itemToken).transferFrom(address(this), stake.staker, payprofit);
+        uint256 oldDuration_in_days = (block.timestamp-stake.timestamp)/SECONDS_IN_DAY;
+
+        if (oldDuration_in_days>=_duration) stakeProfit=payprofit;
+            else stakeProfit = payprofit*oldDuration_in_days/_duration;
+
+        payedProfits += stakeProfit;
+        
+        //require(IERC20(_itemToken).approve(address(this), payprofit), "Approve has failed"); 
+       IERC20(_itemToken).safeTransfer(stake.staker, stakeProfit);
 
         Stake memory newstake = 
                 Stake({
@@ -492,7 +430,7 @@ contract MCTPStake is Pausable {
     public
     {
          require(IERC20(_MCTPAddress).approve(address(this), depositAmount), "Approve has failed"); 
-         IERC20(_MCTPAddress).transferFrom(msg.sender,address(this), depositAmount); 
+         IERC20(_MCTPAddress).safeTransferFrom(msg.sender,address(this), depositAmount); 
          emit StakeEvents(block.timestamp,msg.sender, "Deposit MCTP Coin");
     }
     
@@ -506,8 +444,8 @@ contract MCTPStake is Pausable {
     **/
    
    function withdrawFunds(address _itemToken) external whenNotPaused withdrawAddressOnly() {
-        require(IERC20(_itemToken).approve(address(this), IERC20(_itemToken).balanceOf(address(this))), "Approve has failed"); 
-        IERC20(_itemToken).transferFrom(address(this),msg.sender, IERC20(_itemToken).balanceOf(address(this)));
+        //require(IERC20(_itemToken).approve(address(this), IERC20(_itemToken).balanceOf(address(this))), "Approve has failed"); 
+        IERC20(_itemToken).safeTransfer(msg.sender, IERC20(_itemToken).balanceOf(address(this)));
         
         emit StakeEvents(block.timestamp,msg.sender, "withdrawFunds Coin");
    }
@@ -517,14 +455,6 @@ contract MCTPStake is Pausable {
         _;
    }
 
-    //anti re entranccy
-    //lock
-    modifier noReentrancy() {
-            require(!locked, "Reentrant call detected!");
-            locked = true;
-            _;
-            locked = false;
-    }
     //not contract address
     //codesize
     modifier notContract(address _address) {
@@ -536,10 +466,5 @@ contract MCTPStake is Pausable {
             _;
     }
  
-   function destroy() virtual public {
-        require(msg.sender == owner,"Only the owner of this Contract could destroy It!");
-        if (msg.sender == owner) selfdestruct(payable(owner));
-        emit StakeEvents(block.timestamp,msg.sender,"destory");
-        }
    
 }
