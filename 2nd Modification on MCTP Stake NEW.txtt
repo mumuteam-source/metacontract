@@ -1,0 +1,49 @@
+1* MCT-04 | Inconsistency Usage of `hasStake`
+
+Answer: Fixed
+It is Sure used to check whether User has Staked,
+and the getStakeStatus() Function should use the _userAddress
+as parameter.
+________________________________________________________
+
+2* MCT-18 | Potential Inconsistent Decimals
+Answer:
+We would Only use ONE ERC20 token for Staking IN ONE Staking Application;
+If there is another stake dapp, we will change the decimals for suitable 
+with the Correct One before Deploy an new contract!
+
+According to your advice, we had tried to use the IERC20(itemToken).decimals() to the the right
+deicmals of this Token, But there is an Error with can not compile correctly!
+So, We dicide to use the method of last edition.
+________________________________________________________
+
+3* MCT-17 | Inconsistent Requirements in `openStake()`, `unStake()` and `reStake()`
+As metioned in the openzeppelin doc:
+It is unsafe to assume that an address for which this function returns false is an externally-owned account (EOA) and not a contract.
+Among others, isContract will return false for the following types of addresses:
+
+-an externally-owned account
+-a contract in construction
+-an address where a contract will be created
+-an address where a contract lived, but was destroyed
+
+Answer: 
+In Our current DAPP, use extcodesize(_address) to check use msg.sender is not a 
+Contract is enough, Do not consider the other EOA but not Contract address.
+_______________________________________________________
+4* MCT-16 | Unnecessary `approve()`
+Answer: Fixed
+All Unnecessary approvals are removed
+_______________________________________________________
+
+5* MCT-10 | Potential Denial of Service Attack Caused by Malicious `itemToken`
+Answer: Fixed
+1.We had added Require like below in the function of OpenStake when the msg.sender equals to an old staker.
+ require(_itemToken == oldstake.itemToken, "Stake ItemToken Not Correct!");
+ require(oldstake.tokenAmount + _tokenAmount  <= type(uint256).max, "uint256 type overFLow!");
+2. We had modified the payedProfits as an Mapping type like the totalStakeAmount 
+________________________________________________________________________
+
+6. MCS-01 | `nonReentrant` Modifier can be Placed and Executed Before Other Modifiers In Functions
+Answer: Fixed
+We pleased nonReentrant modifier before other modifiers.

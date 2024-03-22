@@ -21,15 +21,12 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
  * which should encode any item details.
  */
 contract MCTPStake is Pausable, ReentrancyGuard {
-      
-    //using SafeMath for uint256;
+
     using SafeERC20 for IERC20;
     string public name;
     uint256 public decimals = 18;
-    uint256 public minStakeAmount=10 * 10 ** decimals;   
+    uint256 public minStakeAmount= 10;   
     
-   
-    uint256 public payedProfits;
     bool public withDuration; //if True,unstake must not whthin the duration; Else, can unstake anytime
     
     bool private locked;
@@ -54,10 +51,12 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         uint256 timestamp;
     }
 
+
     
     mapping(address=>uint256) public totalStakeAmount; 
     //stakeAmounts[tokenAddress][0],180,365==>Amount
     mapping(address=>mapping(uint256 => uint256)) public stakeAmounts;
+    mapping(address=>uint256) public payedProfits;
     //[tokenAddress][userAddress][duration]==>Stake[]
     mapping(address => mapping(address => mapping(uint256=> Stake))) public stakes;
     mapping(address=>bool) private hasStake;
@@ -93,7 +92,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(_withdrawAddress != address(0),"Zero Address Error!");
         withdrawAddress = payable(_withdrawAddress);
         decimals = _decimals;
-        minStakeAmount = _minStakeAmount * 10 ** _decimals;
+        minStakeAmount = _minStakeAmount;
         emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
     }
 
@@ -230,48 +229,51 @@ contract MCTPStake is Pausable, ReentrancyGuard {
        {
            return totalStakeAmount[_itemToken];
        } 
-    function getStakeStatus (address _tokenAddress)
+    function getStakeStatus (address _userAddress)
         public
         virtual
         view
         returns (bool)
       {
-        return hasStake[_tokenAddress];
+        return hasStake[_userAddress];
       }  
-    function getPayedProfits()
+
+    function getPayedProfits(address _itemToken)
             public
             virtual
             view
             returns (uint256)
         {
-            return payedProfits;
+            return payedProfits[_itemToken];
         } 
-    
+   
     /*
      * 
      */
+    
     function openStake(
         address _itemToken,
         uint256 _tokenAmount,
         uint256 _duration
         )
         public
-        whenNotPaused
         nonReentrant //anti re-entrancy
+        whenNotPaused
         notContract(msg.sender) //anti contract address
         virtual
     {
-       
-        require(_tokenAmount >= minStakeAmount,"stake tokenAmount too small!");
-        //require(IERC20(_itemToken).approve(address(this), _tokenAmount), "Approval failed"); 
+        
+        require(_tokenAmount >= minStakeAmount * 10 ** decimals,"stake tokenAmount too small!");
+        
         IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
         Stake storage oldstake = stakes[_itemToken][msg.sender][_duration];
         
         // stake more coins for a staking stage
         if(oldstake.staker == msg.sender){
-            
+            require(_itemToken == oldstake.itemToken, "Stake ItemToken Not Correct!");
+            require(oldstake.tokenAmount + _tokenAmount  <= type(uint256).max, "uint256 type overFLow!");
             require(_tokenAmount >=  oldstake.tokenAmount, "stake Amount cant not less then current Amount!");
-
+        
             uint256 oldDuration_in_days = (block.timestamp-oldstake.timestamp)/SECONDS_IN_DAY;
             
             uint256 stakeAPY = 0;
@@ -288,8 +290,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             else stakeProfit = stakeAPY*oldDuration_in_days/_duration;
 
 
-            payedProfits += stakeProfit;
-            //require(IERC20(_itemToken).approve(address(this), stakeProfit), "Approve has failed"); 
+            payedProfits[_itemToken] += stakeProfit;
+           
             IERC20(_itemToken).safeTransfer(oldstake.staker, stakeProfit);
 
             oldstake.tokenAmount += _tokenAmount;
@@ -321,8 +323,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
      */
     function unStake(address _itemToken,uint256 _tokenAmount,uint256 _duration)
         public
+        nonReentrant //anti re-entranc
         whenNotPaused
-        nonReentrant //anti re-entrancy
         notContract(msg.sender) //anti contract address
         virtual
     {
@@ -335,6 +337,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             stake.tokenAmount >=_tokenAmount,
             "Stake token Amount insufficient."
         );
+         require(_itemToken == stake.itemToken, "Stake ItemToken Not Correct!");
 
         if(withDuration){
             require(
@@ -355,9 +358,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         if (oldDuration_in_days>=_duration) stakeProfit=payprofit;
         else stakeProfit = payprofit*oldDuration_in_days/_duration;
 
-        payedProfits += stakeProfit;
+        payedProfits[_itemToken] += stakeProfit;
         uint256 payAmount =  _tokenAmount+stakeProfit;
-        //require(IERC20(_itemToken).approve(address(this), payAmount), "Approve has failed");      
+        
        IERC20(_itemToken).safeTransfer( stake.staker, payAmount);
 
         stake.tokenAmount -= _tokenAmount;
@@ -375,8 +378,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
      */
     function reStake(address _itemToken,uint256 _duration)
         public
-        whenNotPaused
         nonReentrant //anti re-entrancy
+        whenNotPaused
         notContract(msg.sender) //anti contract address
         virtual
     {
@@ -385,6 +388,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             msg.sender == stake.staker,
             "Stake can be retake only by the Owner of this Token."
         );
+        require(_itemToken == stake.itemToken, "Stake ItemToken Not Correct!");
         uint256 _tokenAmount = stake.tokenAmount;
         if(withDuration){
             require(
@@ -406,9 +410,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         if (oldDuration_in_days>=_duration) stakeProfit=payprofit;
             else stakeProfit = payprofit*oldDuration_in_days/_duration;
 
-        payedProfits += stakeProfit;
+        payedProfits[_itemToken] += stakeProfit;
         
-        //require(IERC20(_itemToken).approve(address(this), payprofit), "Approve has failed"); 
+       
        IERC20(_itemToken).safeTransfer(stake.staker, stakeProfit);
 
         Stake memory newstake = 
@@ -429,7 +433,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     function depositMCTP(address _MCTPAddress, uint256 depositAmount) 
     public
     {
-         require(IERC20(_MCTPAddress).approve(address(this), depositAmount), "Approve has failed"); 
+         
          IERC20(_MCTPAddress).safeTransferFrom(msg.sender,address(this), depositAmount); 
          emit StakeEvents(block.timestamp,msg.sender, "Deposit MCTP Coin");
     }
@@ -444,7 +448,6 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     **/
    
    function withdrawFunds(address _itemToken) external whenNotPaused withdrawAddressOnly() {
-        //require(IERC20(_itemToken).approve(address(this), IERC20(_itemToken).balanceOf(address(this))), "Approve has failed"); 
         IERC20(_itemToken).safeTransfer(msg.sender, IERC20(_itemToken).balanceOf(address(this)));
         
         emit StakeEvents(block.timestamp,msg.sender, "withdrawFunds Coin");
@@ -462,9 +465,10 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             assembly {
                 codeSize := extcodesize(_address)
             }
-            require(codeSize == 0, "Contracts are not allowed to receive tokens");
+            require(codeSize == 0, "Contracts are not allowed");
             _;
     }
+    
  
    
 }
