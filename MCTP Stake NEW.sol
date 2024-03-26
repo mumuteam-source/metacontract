@@ -62,6 +62,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     mapping(address=>bool) private hasStake;
 
     address payable public withdrawAddress = payable(address(0x39bDeAFcda9d9A612D217CBfA9E90bB28D4D1d23));
+    address public stakeTokenAddress;
     
     //APYs  for Half / One /Two Years of Staking
     uint256 public half_APY=7;
@@ -83,14 +84,16 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         owner = msg.sender;
         withDuration=true;
         locked = false;
+        stakeTokenAddress = address(0x4fdB85CDa4eA74C5d55B45ACCc5dFaD58690A4F7);
     }
-    function setParamaters ( address _withdrawAddress,uint256 _decimals,uint256 _minStakeAmount)
+    function setParamaters ( address _withdrawAddress,address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
     public
     whenNotPaused
     {
         require(msg.sender==owner,"Only owner can set Parameters");
         require(_withdrawAddress != address(0),"Zero Address Error!");
         withdrawAddress = payable(_withdrawAddress);
+        stakeTokenAddress = itemAddress_;
         decimals = _decimals;
         minStakeAmount = _minStakeAmount;
         emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
@@ -264,14 +267,14 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     {
         
         require(_tokenAmount >= minStakeAmount * 10 ** decimals,"stake tokenAmount too small!");
-        
+        require(stakeTokenAddress == _itemToken,"Stake Token Address Error!");
         IERC20(_itemToken).safeTransferFrom(msg.sender,address(this), _tokenAmount); 
         Stake storage oldstake = stakes[_itemToken][msg.sender][_duration];
         
         // stake more coins for a staking stage
         if(oldstake.staker == msg.sender){
             require(_itemToken == oldstake.itemToken, "Stake ItemToken Not Correct!");
-            require(oldstake.tokenAmount + _tokenAmount  <= type(uint256).max, "uint256 type overFLow!");
+           
             require(_tokenAmount >=  oldstake.tokenAmount, "stake Amount cant not less then current Amount!");
         
             uint256 oldDuration_in_days = (block.timestamp-oldstake.timestamp)/SECONDS_IN_DAY;
@@ -328,6 +331,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         notContract(msg.sender) //anti contract address
         virtual
     {
+        require(stakeTokenAddress == _itemToken,"Stake Token Address Error!");
+
         Stake storage stake = stakes[_itemToken][msg.sender][_duration];
         require(
             msg.sender == stake.staker,
@@ -383,6 +388,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         notContract(msg.sender) //anti contract address
         virtual
     {
+        require(stakeTokenAddress == _itemToken,"Stake Token Address Error!");
         Stake storage stake = stakes[_itemToken][msg.sender][_duration];
         require(
             msg.sender == stake.staker,
@@ -448,6 +454,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     **/
    
    function withdrawFunds(address _itemToken) external whenNotPaused withdrawAddressOnly() {
+
         IERC20(_itemToken).safeTransfer(msg.sender, IERC20(_itemToken).balanceOf(address(this)));
         
         emit StakeEvents(block.timestamp,msg.sender, "withdrawFunds Coin");

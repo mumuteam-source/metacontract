@@ -1,0 +1,29 @@
+MCT-17 | Inconsistent Requirements in `openStake()`, `unStake()` and `reStake()`
+We would like to confirm with the team whether the team allows some contracts like ExternalContract to interact with the MCTP NEW STAKE.sol contract
+Answer: Fixed 
+Sure, in some times, We want to call some functions in this " MCTP NEW STAKE.sol" from another contract
+And, as the msg.sender == tx.origin has some other issues
+So, We will not change this modifier of notContract(),
+___________________________________________________________________
+MCT-18 | Potential Inconsistent Decimals
+
+[CertiK, 03/23/2024]: If using one ERC20 token in one staking application, we recommend specifying the address when the contract is created, rather than allowing each user to choose the token address for staking or unstaking actions.
+
+Furthermore, the error might arise from the absence of a decimals() function in the IERC20 interface. Consider utilizing the IERC20Metadata interface as an alternative to retrieve the token's decimals information.
+
+ANSWER:Fixed
+1. we define a public parameter named "stakeTokenAddress", and this will be initialized on at the construct function.
+Then, All the openstake/unStake/reStake functions will be check whether the parameter input from DAPP is euqal the stakeTokenAddress;
+
+and other functions used for manager of DAPP will not check the correction of stakeTokenAddress because this is not used for Dapp regular users.
+
+2. for the decimals() function, definitly  our deployed ERC20 token has this function. As we config the stake token Address at the contract creation, we will not use this function.
+
+___________________________________________________________
+MCS-02 | Unnecessary `require` Condition Logic
+
+Description
+In the openStake() function, a check ensures that the sum of oldstake.tokenAmount and _tokenAmount does not exceed type(uint256).max.
+
+Answer: Fixed:
+According the Certik team's recommendation, we have removed this redundant check.
