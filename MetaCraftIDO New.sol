@@ -307,9 +307,9 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
             require(_tokenAddress != address(0),"Token not support Now"); 
 
             require(tokenAmounts_ > 0,"you should deposit some coins of this token");  
-            
+            require(investedAmount[_tokenAddress] + tokenAmounts_ <= investTargetAmount, "Target Amount Over Flow!" );
             require(tokenAmounts_ % projectCoinPrice ==0, "invest amount should be integral dividen by the token Price"); 
-
+            
 
             Investor storage investor = investorByAddress [msg.sender];
             
