@@ -299,13 +299,16 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
             require(message == challenge,"message not correct!");
             bool isVerified = verified(publicKey,challenge, signature);
             require(isVerified, "Verify Error!");
+
             require(investCoinAddress == _tokenAddress, "invest Coin Not Correct!");
             require(userLevel == 1 || userLevel ==2 || userLevel ==3, "User Level Error!");
+
             require(block.timestamp >= startTimestamp && block.timestamp <endSellTimestamp, "you should invest after the IDO is in Selling ");
-            require(_tokenAddress != address(0),"Token not support Now");  
+            require(_tokenAddress != address(0),"Token not support Now"); 
+
             require(tokenAmounts_ > 0,"you should deposit some coins of this token");  
             
-            require(tokenAmounts_ % projectCoinPrice ==0, "invest amount should be an integral dividen by the token Price"); 
+            require(tokenAmounts_ % projectCoinPrice ==0, "invest amount should be integral dividen by the token Price"); 
 
 
             Investor storage investor = investorByAddress [msg.sender];
@@ -317,6 +320,7 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
             if(investor.investorAddress == msg.sender){
                 require(investor.investCoinAddress == _tokenAddress, "The Coin Address incorrect!");
                 require(investor.claimedProjectCoinAmount == 0,"Can not invest after claimed coins!");
+                require(investor.refundedCoinAmount == 0, "You had already Refunded out!");
 
                 investor.investedCoinAmount += tokenAmounts_;
                 investor.investedAt = block.timestamp;
@@ -408,57 +412,57 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
         notContract(msg.sender) 
         public {
         
-        bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
-        require(message == challenge,"message not correct!");
-        bool isVerified = verified(publicKey,challenge, signature);
-        require(isVerified, "Verify Error!");
+            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
+            require(message == challenge,"message not correct!");
+            bool isVerified = verified(publicKey,challenge, signature);
+            require(isVerified, "Verify Error!");
 
-        require(investCoinAddress == tokenAddress_, "invest Coin Not Correct!");
-        require(tokenAddress_ != address(0),"Token not support Now");  
-       
-        Investor storage invest = investorByAddress[msg.sender];
-
-        require(msg.sender==invest.investorAddress,"Only the Investor can refund tokens!");
-        require(invest.claimedProjectCoinAmount == 0,"Can not refund after claim coins!");
-
+            require(investCoinAddress == tokenAddress_, "invest Coin Not Correct!");
+            require(tokenAddress_ != address(0),"Token not support Now");  
         
-        require(block.timestamp >= protectTimestamp && block.timestamp < claimTimestamp, "you should refund after the IDO is in protect ");
-        
+            Investor storage invest = investorByAddress[msg.sender];
 
-        IERC20(tokenAddress_).safeTransfer(invest.investorAddress, invest.investedCoinAmount); 
+            require(msg.sender==invest.investorAddress,"Only the Investor can refund tokens!");
+            require(invest.claimedProjectCoinAmount == 0,"Can not refund after claim coins!");
+            require(invest.refundedCoinAmount == 0, "You had already Refunded out!");
+            
+            require(block.timestamp >= protectTimestamp && block.timestamp < claimTimestamp, "you should refund after the IDO is in protect ");
+            
 
-        investedAmount[tokenAddress_] -= invest.investedCoinAmount;
-        refundedAmount[tokenAddress_] += invest.investedCoinAmount;
+            IERC20(tokenAddress_).safeTransfer(invest.investorAddress, invest.investedCoinAmount); 
 
-        for (uint256 i =0 ;i<investors.length;i++){
-                if (investors[i].investorAddress == msg.sender)
-                {
-                    investors[i].investedCoinAmount =0;
-                    investors[i].refundedCoinAmount = invest.investedCoinAmount;
-                    investors[i].refundedAt = block.timestamp;
+            investedAmount[tokenAddress_] -= invest.investedCoinAmount;
+            refundedAmount[tokenAddress_] += invest.investedCoinAmount;
+
+            for (uint256 i =0 ;i<investors.length;i++){
+                    if (investors[i].investorAddress == msg.sender)
+                    {
+                        investors[i].investedCoinAmount =0;
+                        investors[i].refundedCoinAmount = invest.investedCoinAmount;
+                        investors[i].refundedAt = block.timestamp;
+                    }
                 }
-            }
+            
         
-       
-        //VIPAmount[tokenAddress_][userLevel] -= invest.investedCoinAmount;
-        require(userVIPAmount[msg.sender][tokenAddress_][1]+userVIPAmount[msg.sender][tokenAddress_][2]+userVIPAmount[msg.sender][tokenAddress_][3]
-                == invest.investedCoinAmount, "User VIP Amount Error!");
+            //VIPAmount[tokenAddress_][userLevel] -= invest.investedCoinAmount;
+            require(userVIPAmount[msg.sender][tokenAddress_][1]+userVIPAmount[msg.sender][tokenAddress_][2]+userVIPAmount[msg.sender][tokenAddress_][3]
+                    == invest.investedCoinAmount, "User VIP Amount Error!");
 
-        VIPAmount[tokenAddress_][1] -= userVIPAmount[msg.sender][tokenAddress_][1];
-        VIPAmount[tokenAddress_][2] -= userVIPAmount[msg.sender][tokenAddress_][2];
-        VIPAmount[tokenAddress_][3] -= userVIPAmount[msg.sender][tokenAddress_][3];
+            VIPAmount[tokenAddress_][1] -= userVIPAmount[msg.sender][tokenAddress_][1];
+            VIPAmount[tokenAddress_][2] -= userVIPAmount[msg.sender][tokenAddress_][2];
+            VIPAmount[tokenAddress_][3] -= userVIPAmount[msg.sender][tokenAddress_][3];
 
-        userVIPAmount[msg.sender][tokenAddress_][1] = 0;
-        userVIPAmount[msg.sender][tokenAddress_][2] = 0;
-        userVIPAmount[msg.sender][tokenAddress_][3] = 0;
-        
-        invest.refundedCoinAmount = invest.investedCoinAmount;
-        invest.investedCoinAmount = 0;
-        invest.refundedAt = block.timestamp; 
+            userVIPAmount[msg.sender][tokenAddress_][1] = 0;
+            userVIPAmount[msg.sender][tokenAddress_][2] = 0;
+            userVIPAmount[msg.sender][tokenAddress_][3] = 0;
+            
+            invest.refundedCoinAmount = invest.investedCoinAmount;
+            invest.investedCoinAmount = 0;
+            invest.refundedAt = block.timestamp; 
 
-        emit IDOEvents(block.timestamp, msg.sender, "Refund Coin");
-        emit IDOStatusChange(tokenAddress_, invest.investedCoinAmount, msg.sender, string(abi.encodePacked("Refund ",userLevel)));
-    }
+            emit IDOEvents(block.timestamp, msg.sender, "Refund Coin");
+            emit IDOStatusChange(tokenAddress_, invest.investedCoinAmount, msg.sender, string(abi.encodePacked("Refund ",userLevel)));
+        }
 
      /*
      * *@dev the project Coin Deposit
@@ -527,6 +531,7 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
         require(msg.sender==invest.investorAddress,"Only the Investor can Claim tokens!");
         //require(raiseStatus == 3 || raiseStatus == 4,"You can only Claim during the Protected or Claim status");
         require(block.timestamp >= protectTimestamp, "you should refund after the IDO is in protect ");
+        require(invest.refundedCoinAmount == 0, "You had already Refunded out!");
         require(invest.claimedProjectCoinAmount == 0, "You had already Claimed out!");
         uint256 claimAmount = invest.investedCoinAmount * 10 ** decimals / projectCoinPrice ; 
         require(IERC20(projectCoinAddress_).balanceOf(address(this))>=  claimAmount, "Project Coin amount insufficient");
