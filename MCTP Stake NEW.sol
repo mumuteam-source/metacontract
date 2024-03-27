@@ -136,7 +136,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
             // Cannot sign a transaction more than once
             require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
-
+            // can not sign within once within 24 hours
             require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
 
             signatures[transactionId][msg.sender] = 1;
@@ -145,7 +145,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             transaction.timestamp= block.timestamp;
 
             emit TransactionSigned(msg.sender, transactionId);
-
+            // at least Sign twice, this will larger than 48 Hours
             if (transaction.signatureCount >= MIN_SIGNATURES) {
                     withdrawAddress = payable(transaction.withdrawAddress_);
                 
@@ -563,7 +563,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     **/
    
    function withdrawFunds(address _itemToken, uint256 _tokenAmount) external whenNotPaused withdrawAddressOnly() {
-
+        // Balance of tokens must more than the total Stake Amount after withdraw!
         require(IERC20(_itemToken).balanceOf(address(this)) - _tokenAmount >=totalStakeAmount[_itemToken], "Token Balance should Euqal or More than totalStakeAmount! ");
         IERC20(_itemToken).safeTransfer(msg.sender, _tokenAmount);
         
