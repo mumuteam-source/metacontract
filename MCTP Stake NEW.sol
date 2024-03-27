@@ -191,7 +191,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         emit TransactionCreated(_withdrawAddress,  block.timestamp, transactionId);
         emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
     }
-    
+
     function setParamaters (  address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
     public
     whenNotPaused
@@ -562,10 +562,10 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     **withdraw token
     **/
    
-   function withdrawFunds(address _itemToken) external whenNotPaused withdrawAddressOnly() {
+   function withdrawFunds(address _itemToken, uint256 _tokenAmount) external whenNotPaused withdrawAddressOnly() {
 
-        
-        IERC20(_itemToken).safeTransfer(msg.sender, IERC20(_itemToken).balanceOf(address(this)));
+        require(IERC20(_itemToken).balanceOf(address(this)) - _tokenAmount >=totalStakeAmount[_itemToken], "Token Balance should Euqal or More than totalStakeAmount! ");
+        IERC20(_itemToken).safeTransfer(msg.sender, _tokenAmount);
         
         emit StakeEvents(block.timestamp,msg.sender, "withdrawFunds Coin");
    }
