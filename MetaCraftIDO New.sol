@@ -52,7 +52,25 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
     mapping(uint8=>uint256) public VIPPerLimit;
     // userVIPAmount[useraddress][tokenAddress][1] ==> user amount of VIP useraddress
     mapping(address=>mapping(address=>mapping(uint8 =>uint256))) public userVIPAmount;
-           
+
+    event TransactionCreated(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
+    event TransactionCompleted(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
+    event TransactionSigned(address by, uint transactionId);
+    
+    mapping(address => uint8) private _owners;
+    mapping ( uint=>mapping(address => uint8)) signatures;
+    mapping (uint => Transaction) private _transactions;
+    uint[] private _pendingTransactions;
+    uint constant MIN_SIGNATURES = 2;
+    uint private _transactionIdx;
+
+    struct Transaction {
+      address withdrawAddress_;
+      uint8 signatureCount;
+      uint256 timestamp;
+    }
+  
+
     struct Investor {
         address investCoinAddress; //usdt or BUSD contract address;
         address payable investorAddress;
@@ -119,8 +137,24 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
        uint256 indexed tokenAmount, 
        address indexed eventSender,
 	   string status
-	   
 	   );
+
+    modifier validOwner() {
+        require(_owners[msg.sender] == 1);
+        _;
+    }
+    function addOwner(address _owner)
+        public 
+        onlyOwner
+        {
+        _owners[_owner] = 1;
+    }
+
+    function removeOwner(address _owner)
+        public {
+        _owners[_owner] = 0;
+    }
+
 
     constructor (string memory projectName, 
     uint256 targetAmount_, 
@@ -144,9 +178,74 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
         VIPPerLimit[3] = 50;
 
     }
-    
+    function getPendingTransactions()
+      view
+      public
+      returns (uint[] memory) {
+      return _pendingTransactions;
+    }
+
+    function signTransaction(uint transactionId)
+      validOwner
+      public {
+
+            Transaction storage transaction = _transactions[transactionId];
+
+            // Transaction must exist
+            require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
+            // Creator cannot sign the transaction
+            require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
+            // Cannot sign a transaction more than once
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+            // can not sign within once within 24 hours
+            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
+
+            signatures[transactionId][msg.sender] = 1;
+
+            transaction.signatureCount++;
+            transaction.timestamp= block.timestamp;
+
+            emit TransactionSigned(msg.sender, transactionId);
+            // at least Sign twice, this will larger than 48 Hours
+            if (transaction.signatureCount >= MIN_SIGNATURES) {
+                    withdrawAddress = payable(transaction.withdrawAddress_);
+                
+                    emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
+                    deleteTransaction(transactionId);
+            }
+    }
+
+    function deleteTransaction(uint transactionId)
+        validOwner
+        public {
+            uint8 replace = 0;
+            for(uint i = 0; i < _pendingTransactions.length; i++) {
+                if (1 == replace) {
+                _pendingTransactions[i-1] = _pendingTransactions[i];
+                } else if (transactionId == _pendingTransactions[i]) {
+                replace = 1;
+                }
+            }
+            delete _pendingTransactions[_pendingTransactions.length - 1];
+            _pendingTransactions.pop();
+            delete _transactions[transactionId];
+    }
     function setWithdrawAddress (address withDrawTo_) external onlyOwner{
-        withdrawAddress = payable(withDrawTo_);
+
+        require(withDrawTo_ != address(0),"Zero Address Error!");
+
+        uint256 transactionId = _transactionIdx++;
+
+        Transaction memory transaction;
+        
+        transaction.withdrawAddress_ = withDrawTo_;
+        transaction.timestamp = block.timestamp;
+        transaction.signatureCount = 0;
+        _transactions[transactionId]=transaction;
+        _pendingTransactions.push(transactionId);
+
+       
+        emit TransactionCreated(withDrawTo_,  block.timestamp, transactionId);
         emit IDOEvents(block.timestamp, msg.sender, "SetWithDrawAddress");
     }
 
@@ -597,6 +696,7 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
    }
    /**
     ** withdraw projectCoin or investCoin by manager;
+    ** After the end time;
     **/
       
    function withdrawAllFunds(address tokenAddress_) 
@@ -604,24 +704,26 @@ contract MetaCraftIDO is Ownable (msg.sender), ReentrancyGuard {
     nonReentrant 
     notContract(msg.sender) 
     withdrawAddressOnly() {
-     uint256 balance = IERC20(tokenAddress_).balanceOf(address(this));
-     require(investCoinAddress == tokenAddress_ || projectCoinAddress == tokenAddress_, "Coin Address Not Correct!");
-     
-     IERC20(tokenAddress_).safeTransfer(msg.sender, balance);
+        uint256 balance = IERC20(tokenAddress_).balanceOf(address(this));
+        require(investCoinAddress == tokenAddress_ || projectCoinAddress == tokenAddress_, "Coin Address Not Correct!");
+        require(block.timestamp - claimTimestamp >= 3 days, "Withdraw Fund Until 48 hours after Claim ");
 
-     if(tokenAddress_ == investCoinAddress){
-        investedAmount[tokenAddress_] -= balance;
-        refundedAmount[tokenAddress_] += balance;
-        emit IDOStatusChange(tokenAddress_, balance, msg.sender, "Manager Withdraw invest Coins");
-        }
-     else if(tokenAddress_ == projectCoinAddress){
+        if(tokenAddress_ == investCoinAddress){
+            
+            investedAmount[tokenAddress_] -= balance;
+            refundedAmount[tokenAddress_] += balance;
+            emit IDOStatusChange(tokenAddress_, balance, msg.sender, "Manager Withdraw invest Coins");
+            }
+        else if(tokenAddress_ == projectCoinAddress){
 
-        projectCoinAmount[tokenAddress_] = IERC20(tokenAddress_).balanceOf(address(this));
-        claimedAmount[tokenAddress_] += balance;
-        emit IDOStatusChange(tokenAddress_, balance, msg.sender, "Manager Withdraw invest Coins");
-        }
-     else 
-        revert("withDraw TokenAddress ERROR");
+            projectCoinAmount[tokenAddress_] = IERC20(tokenAddress_).balanceOf(address(this));
+            claimedAmount[tokenAddress_] += balance;
+            emit IDOStatusChange(tokenAddress_, balance, msg.sender, "Manager Withdraw invest Coins");
+            }
+        else 
+            revert("withDraw TokenAddress ERROR");
+        
+        IERC20(tokenAddress_).safeTransfer(msg.sender, balance);
      
    }
 
