@@ -41,6 +41,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 	   );
 
     address private owner;
+
     event TransactionCreated(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
     event TransactionCompleted(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
     event TransactionSigned(address by, uint transactionId);
@@ -55,7 +56,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     mapping (uint => Transaction) private _transactions;
     uint[] private _pendingTransactions;
 
-     modifier validOwner() {
+    modifier validOwner() {
         require(_owners[msg.sender] == 1);
         _;
     }
@@ -100,7 +101,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
   
     uint256 public constant SECONDS_IN_DAY = 86400;
 
-    uint constant MIN_SIGNATURES = 3;
+    uint constant MIN_SIGNATURES = 2;
     uint private _transactionIdx;
 
     event StakeEvents(
@@ -117,7 +118,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         locked = false;
         stakeTokenAddress = address(0x4fdB85CDa4eA74C5d55B45ACCc5dFaD58690A4F7);
     }
-     function getPendingTransactions()
+    function getPendingTransactions()
       view
       public
       returns (uint[] memory) {
@@ -189,7 +190,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 
        
         emit TransactionCreated(_withdrawAddress,  block.timestamp, transactionId);
-        emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
+        emit StakeEvents(block.timestamp,msg.sender, "setWithDrawAddress");
     }
 
     function setParamaters (  address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
