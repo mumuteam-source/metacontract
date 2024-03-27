@@ -40,7 +40,35 @@ contract MCTPStake is Pausable, ReentrancyGuard {
        uint256 timestamp
 	   );
 
-   address private owner;
+    address private owner;
+    event TransactionCreated(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
+    event TransactionCompleted(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
+    event TransactionSigned(address by, uint transactionId);
+
+    struct Transaction {
+      address withdrawAddress_;
+      uint8 signatureCount;
+      uint256 timestamp;
+    }
+    mapping(address => uint8) private _owners;
+    mapping ( uint=>mapping(address => uint8)) signatures;
+    mapping (uint => Transaction) private _transactions;
+    uint[] private _pendingTransactions;
+
+     modifier validOwner() {
+        require(_owners[msg.sender] == 1);
+        _;
+    }
+    function addOwner(address _owner)
+        public {
+        require(msg.sender==owner,"Only owner can set Parameters");
+        _owners[_owner] = 1;
+    }
+
+    function removeOwner(address _owner)
+        public {
+        _owners[_owner] = 0;
+    }
 
     struct Stake {
         address itemToken;
@@ -72,6 +100,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
   
     uint256 public constant SECONDS_IN_DAY = 86400;
 
+    uint constant MIN_SIGNATURES = 3;
+    uint private _transactionIdx;
+
     event StakeEvents(
         uint256 timeStamp,
         address eventSender,          
@@ -86,18 +117,94 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         locked = false;
         stakeTokenAddress = address(0x4fdB85CDa4eA74C5d55B45ACCc5dFaD58690A4F7);
     }
-    function setParamaters ( address _withdrawAddress,address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
+     function getPendingTransactions()
+      view
+      public
+      returns (uint[] memory) {
+      return _pendingTransactions;
+    }
+
+    function signTransaction(uint transactionId)
+      validOwner
+      public {
+
+            Transaction storage transaction = _transactions[transactionId];
+
+            // Transaction must exist
+            require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
+            // Creator cannot sign the transaction
+            require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
+            // Cannot sign a transaction more than once
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+
+            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
+
+            signatures[transactionId][msg.sender] = 1;
+
+            transaction.signatureCount++;
+            transaction.timestamp= block.timestamp;
+
+            emit TransactionSigned(msg.sender, transactionId);
+
+            if (transaction.signatureCount >= MIN_SIGNATURES) {
+                    withdrawAddress = payable(transaction.withdrawAddress_);
+                
+                    emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
+                    deleteTransaction(transactionId);
+            }
+    }
+
+    function deleteTransaction(uint transactionId)
+        validOwner
+        public {
+            uint8 replace = 0;
+            for(uint i = 0; i < _pendingTransactions.length; i++) {
+                if (1 == replace) {
+                _pendingTransactions[i-1] = _pendingTransactions[i];
+                } else if (transactionId == _pendingTransactions[i]) {
+                replace = 1;
+                }
+            }
+            delete _pendingTransactions[_pendingTransactions.length - 1];
+            _pendingTransactions.pop();
+            delete _transactions[transactionId];
+    }
+
+    function setWithdrawAddress ( address _withdrawAddress )
     public
     whenNotPaused
     {
         require(msg.sender==owner,"Only owner can set Parameters");
         require(_withdrawAddress != address(0),"Zero Address Error!");
-        withdrawAddress = payable(_withdrawAddress);
+
+        uint256 transactionId = _transactionIdx++;
+
+        Transaction memory transaction;
+        
+        transaction.withdrawAddress_ = _withdrawAddress;
+        transaction.timestamp = block.timestamp;
+        transaction.signatureCount = 0;
+        _transactions[transactionId]=transaction;
+        _pendingTransactions.push(transactionId);
+
+       
+        emit TransactionCreated(_withdrawAddress,  block.timestamp, transactionId);
+        emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
+    }
+    
+    function setParamaters (  address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
+    public
+    whenNotPaused
+    {
+        require(msg.sender==owner,"Only owner can set Parameters");
+       
         stakeTokenAddress = itemAddress_;
         decimals = _decimals;
         minStakeAmount = _minStakeAmount;
+     
         emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
     }
+
 
     /**
      ** Set APY
@@ -327,7 +434,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     function unStake(address _itemToken,uint256 _tokenAmount,uint256 _duration)
         public
         nonReentrant //anti re-entranc
-        whenNotPaused
+        //whenNotPaused
         notContract(msg.sender) //anti contract address
         virtual
     {
@@ -436,6 +543,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         emit StakeStatusChange(_itemToken,_tokenAmount, "ReStake", msg.sender,_duration,block.timestamp);
     }
 
+
+
     function depositMCTP(address _MCTPAddress, uint256 depositAmount) 
     public
     {
@@ -455,6 +564,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
    
    function withdrawFunds(address _itemToken) external whenNotPaused withdrawAddressOnly() {
 
+        
         IERC20(_itemToken).safeTransfer(msg.sender, IERC20(_itemToken).balanceOf(address(this)));
         
         emit StakeEvents(block.timestamp,msg.sender, "withdrawFunds Coin");
