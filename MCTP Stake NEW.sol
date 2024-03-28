@@ -60,17 +60,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(_owners[msg.sender] == 1);
         _;
     }
-    function addOwner(address _owner)
-        public {
-        require(msg.sender==owner,"Only owner can set Parameters");
-        _owners[_owner] = 1;
-    }
-
-    function removeOwner(address _owner)
-        public {
-        _owners[_owner] = 0;
-    }
-
+    
     struct Stake {
         address itemToken;
         address staker;
@@ -80,8 +70,6 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         uint256 timestamp;
     }
 
-
-    
     mapping(address=>uint256) public totalStakeAmount; 
     //stakeAmounts[tokenAddress][0],180,365==>Amount
     mapping(address=>mapping(uint256 => uint256)) public stakeAmounts;
@@ -90,7 +78,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     mapping(address => mapping(address => mapping(uint256=> Stake))) public stakes;
     mapping(address=>bool) private hasStake;
 
-    address payable public withdrawAddress = payable(address(0x39bDeAFcda9d9A612D217CBfA9E90bB28D4D1d23));
+    address payable public withdrawAddress;
     address public stakeTokenAddress;
     
     //APYs  for Half / One /Two Years of Staking
@@ -116,8 +104,14 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         owner = msg.sender;
         withDuration=true;
         locked = false;
+
         stakeTokenAddress = address(0x4fdB85CDa4eA74C5d55B45ACCc5dFaD58690A4F7);
+        //MultiSig addresses
+        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
+        _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
+        _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
     }
+
     function getPendingTransactions()
       view
       public
@@ -136,9 +130,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             // Creator cannot sign the transaction
             require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
             // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the Same Account!");
             // can not sign within once within 24 hours
-            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
+            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin 48 Hours for at Least 2 signers after Tx created! !");
 
             signatures[transactionId][msg.sender] = 1;
 
@@ -188,39 +182,11 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         _transactions[transactionId]=transaction;
         _pendingTransactions.push(transactionId);
 
-       
         emit TransactionCreated(_withdrawAddress,  block.timestamp, transactionId);
         emit StakeEvents(block.timestamp,msg.sender, "setWithDrawAddress");
     }
 
-    function setParamaters (  address itemAddress_,uint256 _decimals,uint256 _minStakeAmount)
-    public
-    whenNotPaused
-    {
-        require(msg.sender==owner,"Only owner can set Parameters");
-       
-        stakeTokenAddress = itemAddress_;
-        decimals = _decimals;
-        minStakeAmount = _minStakeAmount;
-     
-        emit StakeEvents(block.timestamp,msg.sender, "setParamaters");
-    }
 
-
-    /**
-     ** Set APY
-     **/
-    function setAPY( uint256 _half, uint256 _full, uint256 _two)
-    public
-    whenNotPaused
-    {
-        require(msg.sender==owner,"Only owner can set Percents");
-       
-        half_APY = _half;
-        full_APY = _full;
-        two_APY = _two;
-        emit StakeEvents(block.timestamp,msg.sender, "setAPY");
-    }
     function pause() public  {
         require(msg.sender == owner,"Only the owner of this Contract could do It!");
         _pause();
@@ -586,7 +552,5 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             require(codeSize == 0, "Contracts are not allowed");
             _;
     }
-    
- 
    
 }

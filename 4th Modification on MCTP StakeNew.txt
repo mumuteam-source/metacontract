@@ -1,0 +1,8 @@
+1. we add  MultiSig + 48 Hours timeLock for the withdrawAddress seting function;
+
+2. We remove all other  owner only releated functions, such as setParamaters, setAPY
+
+3. We add on require for the withdrawFunds function, that the operation can not withdraw amounts more than the rewards we deposited in;
+  by adding this centence:
+  require(IERC20(_itemToken).balanceOf(address(this)) - _tokenAmount >=totalStakeAmount[_itemToken], "Token Balance should Euqal or More than totalStakeAmount! ");
+  
