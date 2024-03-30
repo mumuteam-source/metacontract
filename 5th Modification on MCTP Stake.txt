@@ -1,0 +1,43 @@
+1. MCN-02 | Concerns about `stakeTokenAddress`
+Discussion
+Modified: 
+We pass the stakeTokenAddress from the parameter of Constuct function like this:
+constructor (address _stakeTokenAddress)
+    {    
+        require(_stakeTokenAddress != address(0), "StakeTokenAddress cannot be the zero address");
+        stakeTokenAddress = _stakeTokenAddress;
+    }
+
+____________________________________
+
+
+2. MCE-02 | Transaction May be Deleted Arbitrarily by `validOwner`
+Discussion
+Modified:
+We had changed the deleteTransaction function from public to private
+
+_______________________________________
+3. MCE-03 | Potential Gas Optimizations By Swapping With The Last One Transaction ID
+Optimization
+Modified:
+We had swapped the last element of the array with the one to be deleted and 
+then removing the last element.
+________________________________________________________
+4.MCE-04 | Potential Incorrect Last Pending Transaction Deletion
+Minor
+Modified:
+Add on check for the transactionId exist!
+and modified the deleteTransaction to be private;
+________________________________________
+5. MCE-05 | Potential Improper Timelock Design
+Informational:
+Modified:
+Add an observationPeriod for 24 hours;
+and an executeTransaction to set the withdrawAddress after the observationPeriod
+not in the signTransaction function;
+_________________________________________
+6. MCP-21 | Unnecessary Storage Read Access in For Loop
+Optimization
+Modified:
+use an new variable name txLength in the for loop instead of the _pendingTransactions.length
+

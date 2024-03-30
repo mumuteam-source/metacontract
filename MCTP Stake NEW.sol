@@ -40,6 +40,11 @@ contract MCTPStake is Pausable, ReentrancyGuard {
        uint256 timestamp
 	   );
 
+    event TransactionReadyForExecution(
+        address itemToken,
+        uint256 timestamp,
+        uint transactionId
+    );
     address private owner;
 
     event TransactionCreated(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
@@ -49,18 +54,161 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     struct Transaction {
       address withdrawAddress_;
       uint8 signatureCount;
+      uint256 readyForExecutionTimestamp; 
       uint256 timestamp;
     }
+    struct TxAddOwner {
+      address owner;
+      uint8 signatureCount;
+      uint256 timestamp;
+    }
+
+     struct TxDelOwner {
+      address owner;
+      uint8 signatureCount;
+      uint256 timestamp;
+    }
+
     mapping(address => uint8) private _owners;
     mapping ( uint=>mapping(address => uint8)) signatures;
     mapping (uint => Transaction) private _transactions;
     uint[] private _pendingTransactions;
+    uint256 public observationPeriod = 24 hours;
+
+    mapping (uint => TxAddOwner) private _txaddowners;
+    mapping (uint => TxDelOwner) private _txdelowners;
 
     modifier validOwner() {
-        require(_owners[msg.sender] == 1);
+        require(_owners[msg.sender] == 1, "not Authorized Mulsig User !");
         _;
     }
+
+    function addOwner(address _owner)
+        public 
+        {
+            require(msg.sender==owner,"Only owner can set Parameters");
+            require(_owner != address(0),"Zero Address Error!");
+
+            uint256 transactionId = _transactionIdx++;
+            TxAddOwner memory txOwner;
+            
+            txOwner.owner = _owner;
+            txOwner.timestamp = block.timestamp;
+            txOwner.signatureCount = 0;
+            _txaddowners[transactionId]=txOwner;
+            _pendingTransactions.push(transactionId);
+
+            emit TransactionCreated(_owner,  block.timestamp, transactionId);
+            emit StakeEvents(block.timestamp,msg.sender, "AddValieOwner");
+    }
+
+    function removeOwner(address _owner)
+        public {
+            require(msg.sender==owner,"Only owner can set Parameters");
+            require(_owner != address(0),"Zero Address Error!");
+
+            uint256 transactionId = _transactionIdx++;
+            TxDelOwner memory txOwner;
+            
+            txOwner.owner = _owner;
+            txOwner.timestamp = block.timestamp;
+            txOwner.signatureCount = 0;
+            _txdelowners[transactionId]=txOwner;
+            _pendingTransactions.push(transactionId);
+           
+            emit TransactionCreated(_owner,  block.timestamp, transactionId);
+            emit StakeEvents(block.timestamp,msg.sender, "RemoveValieOwner");
+    }
     
+    function signUserAdd(uint transactionId)
+      validOwner
+      public {
+
+            TxAddOwner storage transaction = _txaddowners[transactionId];
+
+            // Transaction must exist
+            require(address(0) != transaction.owner,  "Fee To Zero Addresses!");
+            // Creator cannot sign the transaction
+            require(msg.sender !=transaction.owner , "Can't Sign Self!" );
+            // Cannot sign a transaction more than once
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+            signatures[transactionId][msg.sender] = 1;
+
+            transaction.signatureCount++;
+            transaction.timestamp= block.timestamp;
+
+            emit TransactionSigned(msg.sender, transactionId);
+           
+            if (transaction.signatureCount >= MIN_SIGNATURES) {
+                    _owners[(transaction.owner)]=1;
+                    emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
+                    deleteAddUserTx(transactionId);
+            }
+    }
+    function deleteAddUserTx(uint transactionId)
+        validOwner
+        private {
+            TxAddOwner memory transaction = _txaddowners[transactionId];
+            require(transaction.timestamp > 0, "transaction not exist!");
+           
+            uint256 txLength = _pendingTransactions.length;
+            for (uint256 i = 0; i < txLength; i++) {
+                if (_pendingTransactions[i] == transactionId) {
+                    
+                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
+                   
+                    _pendingTransactions.pop();
+                    break;
+                }
+            }
+            delete _txaddowners[transactionId];
+    }
+    function signUserDel(uint transactionId)
+      validOwner
+      public {
+
+            TxDelOwner storage transaction = _txdelowners[transactionId];
+
+            // Transaction must exist
+            require(address(0) != transaction.owner,  "Fee To Zero Addresses!");
+            // Creator cannot sign the transaction
+            require(msg.sender !=transaction.owner , "Can't Sign Self!" );
+            // Cannot sign a transaction more than once
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+          
+            signatures[transactionId][msg.sender] = 1;
+
+            transaction.signatureCount++;
+            transaction.timestamp= block.timestamp;
+
+            emit TransactionSigned(msg.sender, transactionId);
+           
+            if (transaction.signatureCount >= MIN_SIGNATURES) {
+                    _owners[transaction.owner]=0;
+                
+                    emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
+                    deleteDelUserTx(transactionId);
+            }
+    }
+   function deleteDelUserTx(uint transactionId)
+        validOwner
+        private {
+            TxDelOwner memory transaction = _txdelowners[transactionId];
+            require(transaction.timestamp > 0, "transaction not exist!");
+           
+            uint256 txLength = _pendingTransactions.length;
+            for (uint256 i = 0; i < txLength; i++) {
+                if (_pendingTransactions[i] == transactionId) {
+                    
+                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
+                   
+                    _pendingTransactions.pop();
+                    break;
+                }
+            }
+            delete _txdelowners[transactionId];
+    }
+
     struct Stake {
         address itemToken;
         address staker;
@@ -89,7 +237,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
   
     uint256 public constant SECONDS_IN_DAY = 86400;
 
-    uint constant MIN_SIGNATURES = 2;
+    uint constant MIN_SIGNATURES = 3;
     uint private _transactionIdx;
 
     event StakeEvents(
@@ -98,18 +246,18 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         string  eventName
     );
  
-    constructor ()
+    constructor (address _stakeTokenAddress)
     {    
         name = "MCTPStake";
         owner = msg.sender;
         withDuration=true;
         locked = false;
+        require(_stakeTokenAddress != address(0), "StakeTokenAddress cannot be the zero address");
+        stakeTokenAddress = _stakeTokenAddress;
 
-        stakeTokenAddress = address(0x4fdB85CDa4eA74C5d55B45ACCc5dFaD58690A4F7);
-        //MultiSig addresses
-        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
         _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
         _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
+        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
     }
 
     function getPendingTransactions()
@@ -119,49 +267,59 @@ contract MCTPStake is Pausable, ReentrancyGuard {
       return _pendingTransactions;
     }
 
-    function signTransaction(uint transactionId)
-      validOwner
-      public {
+    function  getValidOwner(address _owner)  view public returns (uint){
+       
+        return _owners[_owner];
+    }
+     function signTransaction(uint transactionId) validOwner public {
+        Transaction storage transaction = _transactions[transactionId];
+       
+        require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
+        // Creator cannot sign the transaction
+        require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
+        // Cannot sign a transaction more than once
+        require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+        // can not sign within once within 24 hours
+        require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
 
-            Transaction storage transaction = _transactions[transactionId];
+        signatures[transactionId][msg.sender] = 1;
 
-            // Transaction must exist
-            require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
-            // Creator cannot sign the transaction
-            require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
-            // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the Same Account!");
-            // can not sign within once within 24 hours
-            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin 48 Hours for at Least 2 signers after Tx created! !");
+        transaction.signatureCount++;
+        transaction.timestamp= block.timestamp;
+        
+        if (transaction.signatureCount >= MIN_SIGNATURES) {
+            transaction.readyForExecutionTimestamp = block.timestamp + observationPeriod;
+            emit TransactionReadyForExecution(transaction.withdrawAddress_, transaction.readyForExecutionTimestamp, transactionId);
+        }
+    }
 
-            signatures[transactionId][msg.sender] = 1;
+    function executeTransaction(uint transactionId) public {
+        Transaction storage transaction = _transactions[transactionId];
+        require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
+        require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
+        require(block.timestamp >= transaction.readyForExecutionTimestamp, "Transaction is not ready for execution");
 
-            transaction.signatureCount++;
-            transaction.timestamp= block.timestamp;
-
-            emit TransactionSigned(msg.sender, transactionId);
-            // at least Sign twice, this will larger than 48 Hours
-            if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    withdrawAddress = payable(transaction.withdrawAddress_);
-                
-                    emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
-                    deleteTransaction(transactionId);
-            }
+        withdrawAddress = payable(transaction.withdrawAddress_);
+        emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
+        deleteTransaction(transactionId);
     }
 
     function deleteTransaction(uint transactionId)
         validOwner
-        public {
-            uint8 replace = 0;
-            for(uint i = 0; i < _pendingTransactions.length; i++) {
-                if (1 == replace) {
-                _pendingTransactions[i-1] = _pendingTransactions[i];
-                } else if (transactionId == _pendingTransactions[i]) {
-                replace = 1;
+        private {
+            Transaction memory transaction = _transactions[transactionId];
+            require(transaction.timestamp > 0, "transaction not exist!");
+           
+            uint256 txLength = _pendingTransactions.length;
+            for (uint256 i = 0; i < txLength; i++) {
+                if (_pendingTransactions[i] == transactionId) {
+                    
+                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
+                   
+                    _pendingTransactions.pop();
+                    break;
                 }
             }
-            delete _pendingTransactions[_pendingTransactions.length - 1];
-            _pendingTransactions.pop();
             delete _transactions[transactionId];
     }
 
@@ -552,5 +710,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             require(codeSize == 0, "Contracts are not allowed");
             _;
     }
+    
+ 
    
 }
