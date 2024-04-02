@@ -88,7 +88,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-
+            require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
             uint256 transactionId = _transactionIdx++;
             TxAddOwner memory txOwner;
             
@@ -106,7 +106,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         public {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-
+            require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
             uint256 transactionId = _transactionIdx++;
             TxDelOwner memory txOwner;
             
@@ -255,9 +255,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(_stakeTokenAddress != address(0), "StakeTokenAddress cannot be the zero address");
         stakeTokenAddress = _stakeTokenAddress;
 
-        _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
-        _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
-        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
+       _owners[address(0xce44C139234E2E8146c82eF42dC3d9fc39833361)] = 1;
+       _owners[address(0xd0c06ced3DFaA617c105166BB5cADc317DaaA41B)] = 1;
+       _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
     }
 
     function getPendingTransactions()
@@ -279,8 +279,10 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
         // Cannot sign a transaction more than once
         require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+        // no more than MIN_SIGNATURES Signs
+        require(transaction.signatureCount < MIN_SIGNATURES, "MS has satisfied, No need further Sign!");
         // can not sign within once within 24 hours
-        require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
+        require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 24 Hours for each signers !");
 
         signatures[transactionId][msg.sender] = 1;
 
@@ -329,7 +331,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     {
         require(msg.sender==owner,"Only owner can set Parameters");
         require(_withdrawAddress != address(0),"Zero Address Error!");
-
+        require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
         uint256 transactionId = _transactionIdx++;
 
         Transaction memory transaction;

@@ -1,0 +1,52 @@
+
+
+1. MCW-02 | Discussion on Lack of Timelock on Adding/Deleting Owners
+Discussion:
+Answer:
+Adding/Deleting validOwner is working for multi-sign to weak the centralization risk of the owner.
+Any valid owner can do NOTHING without MIN_SIGNATURES accounts have signed the tranaction.
+And the valid owners can only add,delete, espencially, set withdraw address.
+although add or remove valie owner execute immediately, but any transactions of these valid owners 
+would be multi-signed, so, this two functions need NOT the timelock.
+______________________________________________________
+2.MCW-03 | Potential Unintended Delay of Transaction Execution
+Minor
+Modified:
+by adding check for no more than MIN_SIGNATURES sign like this:
+in the Function of signTransaction()
+// no more than MIN_SIGNATURES Signs
+require(transaction.signatureCount < MIN_SIGNATURES, "MS has satisfied, No need further Sign!");
+
+After this Update, once the transaction has achieved the minimum required signatures (MIN_SIGNATURES), further signatures could not sign anymore, and the the transaction.readyForExecutionTimestamp would not be extended.
+__________________________________________________________________
+3. MCW-04 | No Limit on Transaction Pending period or Executable period
+Minor
+Modified:
+by adding check for no more than 1 tx pending for multi-sign,
+Any new pending tx can only be created until the current pending tx has been signed and deleted from the queue.
+
+require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
+which is adding into the functions of addOwner, removeOwner and setWithDrawAddress;
+
+
+1.Transactions initiated via the setWithdrawAddress()， signUserAdd, and signUserDel function enter a pending state. They will execute once endorsed by three validOwners. However, without any signatures or with insufficient approvals, these transactions linger indefinitely in the pending queue until they meet execution prerequisites. Consequently, an outdated transaction might later receive approval and unexpectedly alter its designation.
+Answer: After modified, there is only 1 tx pending in the queue, pending tx queue will not changed until  current tx has beed signed! 
+
+2. Once a transaction garners the requisite three validOwner signatures and surpasses the observationPeriod, it becomes executable at any moment. Executing a transaction at an unforeseen time could potentially disrupt contract operations.
+Answer: 
+(1)the Execution of a 3 owner signed tx will not delay long time. 
+If there is an new tx should be signed, the current pending one should be executed and deleted before!
+(2) and the Execution of a signed tx can be triggered by any account without owner priviledge, this is 
+another reason that the pending tx would not delay for an unforeseen time
+__________________________________________________
+4. MCW-05 | Potential Risks Arising From Owner Changes
+Informational:
+Modified: (the same as the MCW-04)
+by adding check for no more than 1 tx pending for multi-sign,
+Any new pending tx can only be created until the current pending tx has been signed and deleted from the queue.
+
+require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
+which is adding into the functions of addOwner, removeOwner and setWithDrawAddress;
+
+After this update, when a transaction pending due to lack of enough approval from all valid owners can not be suddenly proceed if a new owner, who agrees, is introduced and signs off on it, thereby allowing the transaction to be executed and implemented. Because there wouldn't has an new validOwner until the current pending tx has beed signed!
+
