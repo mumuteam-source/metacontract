@@ -1,0 +1,51 @@
+MCW-04 | No Limit on Transaction Pending period or Executable period
+
+Minor
+Modified：
+However, this strategy carries the risk that if any validOwner becomes unresponsive or disagrees with the pending transaction, it could obstruct the normal functioning of these functions. The team can establish a specific timeframe for how long transactions can remain pending.
+
+We add an timeframe for 96 hours:
+
+ uint256 public maxPendingTime = 96 hours;
+ 
+After one pending tx have be created, no more tx can be created within this timeframe !
+but if some validOwner do not agree and not sign with it, after the timeframe of 96 hours,
+this pending tx will be deleted, and a new one could be created!
+the function named deleteMaxPendingTx,which is added under all the functions like setWithdrawAddress, addowner and removeOwner.
+this can check do it like below:
+
+function  deleteMaxPendingTx()
+    private 
+    {
+         require(_pendingTransactions.length <= 1,"has pending txs! Please sign them first");   
+         
+         if(_pendingTransactions.length == 1 ){
+                uint txId = _pendingTransactions[0];
+                Transaction storage pendingwithdrawTx = _transactions[txId];
+                TxAddOwner storage pendingaddTx = _txaddowners[txId];
+                TxDelOwner storage pendingdelTx = _txdelowners[txId];
+                //for withdraw Txs
+                if (pendingwithdrawTx.timestamp > 0 ){
+                    if(block.timestamp - pendingwithdrawTx.timestamp > maxPendingTime){
+                         deleteTransaction(txId);
+                    } else revert("has pending txs yet! Please sign them first");
+                   
+                }
+                //for add user Txs
+                if (pendingaddTx.timestamp> 0 ){
+                    if(block.timestamp - pendingaddTx.timestamp > maxPendingTime) {
+                         deleteAddUserTx(txId);
+                    }else revert("has pending txs yet! Please sign them first");
+                   
+                } 
+                //for del user Txs
+                if (pendingdelTx.timestamp > 0 ){
+                    if (block.timestamp - pendingdelTx.timestamp > maxPendingTime){
+                        deleteDelUserTx(txId);
+                    }else revert("has pending txs yet! Please sign them first");
+                    
+                }
+
+            }
+
+    }

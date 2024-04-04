@@ -74,6 +74,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     mapping (uint => Transaction) private _transactions;
     uint[] private _pendingTransactions;
     uint256 public observationPeriod = 24 hours;
+    uint256 public maxPendingTime = 96 hours;
 
     mapping (uint => TxAddOwner) private _txaddowners;
     mapping (uint => TxDelOwner) private _txdelowners;
@@ -82,13 +83,49 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(_owners[msg.sender] == 1, "not Authorized Mulsig User !");
         _;
     }
+    function  deleteMaxPendingTx()
+    private 
+    {
+         require(_pendingTransactions.length <= 1,"has pending txs! Please sign them first");   
+         
+         if(_pendingTransactions.length == 1 ){
+                uint txId = _pendingTransactions[0];
+                Transaction storage pendingwithdrawTx = _transactions[txId];
+                TxAddOwner storage pendingaddTx = _txaddowners[txId];
+                TxDelOwner storage pendingdelTx = _txdelowners[txId];
+                //for withdraw Txs
+                if (pendingwithdrawTx.timestamp > 0 ){
+                    if(block.timestamp - pendingwithdrawTx.timestamp > maxPendingTime){
+                         deleteTransaction(txId);
+                    } else revert("has pending txs yet! Please sign them first");
+                   
+                }
+                //for add user Txs
+                if (pendingaddTx.timestamp> 0 ){
+                    if(block.timestamp - pendingaddTx.timestamp > maxPendingTime) {
+                         deleteAddUserTx(txId);
+                    }else revert("has pending txs yet! Please sign them first");
+                   
+                } 
+                //for del user Txs
+                if (pendingdelTx.timestamp > 0 ){
+                    if (block.timestamp - pendingdelTx.timestamp > maxPendingTime){
+                        deleteDelUserTx(txId);
+                    }else revert("has pending txs yet! Please sign them first");
+                    
+                }
 
+            }
+
+    }
     function addOwner(address _owner)
         public 
         {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-            require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
+            deleteMaxPendingTx();
+
+           
             uint256 transactionId = _transactionIdx++;
             TxAddOwner memory txOwner;
             
@@ -106,7 +143,11 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         public {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-            require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
+            deleteMaxPendingTx();
+
+            
+
+
             uint256 transactionId = _transactionIdx++;
             TxDelOwner memory txOwner;
             
@@ -266,7 +307,16 @@ contract MCTPStake is Pausable, ReentrancyGuard {
       returns (uint[] memory) {
       return _pendingTransactions;
     }
+    function getPendingTransaction(uint transactionId)
+      view
+      public
+      returns (Transaction memory, TxAddOwner memory, TxDelOwner memory) {
+        Transaction storage pendingwithdrawTx = _transactions[transactionId];
+        TxAddOwner storage pendingaddTx = _txaddowners[transactionId];
+        TxDelOwner storage pendingdelTx = _txdelowners[transactionId];
 
+      return (pendingwithdrawTx,pendingaddTx,pendingdelTx);
+    }
     function  getValidOwner(address _owner)  view public returns (uint){
        
         return _owners[_owner];
@@ -289,7 +339,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         transaction.signatureCount++;
         transaction.timestamp= block.timestamp;
         
-        if (transaction.signatureCount >= MIN_SIGNATURES) {
+        if (transaction.signatureCount == MIN_SIGNATURES) {
             transaction.readyForExecutionTimestamp = block.timestamp + observationPeriod;
             emit TransactionReadyForExecution(transaction.withdrawAddress_, transaction.readyForExecutionTimestamp, transactionId);
         }
@@ -331,7 +381,10 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     {
         require(msg.sender==owner,"Only owner can set Parameters");
         require(_withdrawAddress != address(0),"Zero Address Error!");
-        require(_pendingTransactions.length==0,"has pending tx! Please sign them first");
+
+        deleteMaxPendingTx();
+
+       
         uint256 transactionId = _transactionIdx++;
 
         Transaction memory transaction;
