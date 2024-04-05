@@ -364,11 +364,6 @@ contract MetaCraftIDO is ReentrancyGuard {
 
         chainId = block.chainid;
 
-        _owners[msg.sender] =1;
-        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
-        _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
-        _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
-
     }
     function getPendingTransactions()
       view
@@ -558,9 +553,8 @@ contract MetaCraftIDO is ReentrancyGuard {
     nonReentrant 
     notContract
     {
-                chainId = block.chainid;
-                bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender,chainId);
                 require(block.timestamp < startTimestamp,"Can not set parameters after project start");
+                bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
                 require(message == challenge,"message not correct!");
                 bool isVerified = verified(publicKey,challenge, signature);
                 require(isVerified, "Verify Error!");
@@ -597,12 +591,11 @@ contract MetaCraftIDO is ReentrancyGuard {
         notContract
         public  
         {
-            chainId = block.chainid;
-            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender,chainId);
+            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
             require(message == challenge,"message not correct!");
             bool isVerified = verified(publicKey,challenge, signature);
             require(isVerified, "Verify Error!");
-            require(block.timestamp - timestamp < 2 minutes, "timestamp Error!");
+            require(block.timestamp - timestamp <2 minutes, "timestamp Error!");
             require(investCoinAddress == _tokenAddress, "invest Coin Not Correct!");
             require(userLevel == 1 || userLevel ==2 || userLevel ==3, "User Level Error!");
 
@@ -659,11 +652,10 @@ contract MetaCraftIDO is ReentrancyGuard {
     function getChallenge(uint256 timestamp,
                               bytes32 nonce, 
                               uint8 userLevel,
-                              address userAddress,
-                              uint256 currentchainId
-                             ) public pure returns (bytes32){
-        
-        bytes32 challenge = keccak256(abi.encodePacked( userAddress, timestamp, nonce, userLevel, currentchainId));
+                              address userAddress
+                             ) private  returns (bytes32){
+        chainId = block.chainid;
+        bytes32 challenge = keccak256(abi.encodePacked( userAddress, timestamp, nonce, userLevel, chainId));
        
         return challenge;   
     }
@@ -673,17 +665,13 @@ contract MetaCraftIDO is ReentrancyGuard {
         address signer,
         bytes32 message,
         bytes memory signature
-    ) public pure returns (address,address)
+    ) private pure returns (bool)
     {
         
         (bytes32 r, bytes32 s, uint8 v) = splitSignature(signature);
         bytes32 ethSignedMessageHash = getEthSignedMessageHash(message);
         address recovered = ecrecover(ethSignedMessageHash, v, r, s);
-
-        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
-        require(recoveredSigner == signer, "Invalid signature");
-
-       return (recoveredSigner, recovered);
+        return recovered == signer;
     }
 
     function verified(
@@ -691,8 +679,8 @@ contract MetaCraftIDO is ReentrancyGuard {
         bytes32 messageHash,
         bytes memory signature
     ) public  pure returns (bool) {     
-        bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
-        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
+       
+        address recoveredSigner = ECDSA.recover(messageHash, signature);
         require(recoveredSigner == expectedSigner, "Invalid signature");
 
         bytes32 r;
@@ -703,11 +691,11 @@ contract MetaCraftIDO is ReentrancyGuard {
             s := mload(add(signature, 64))
             v := byte(0, mload(add(signature, 96)))
         }
-        require(ecrecover(ethSignedMessageHash, v, r, s) == expectedSigner, "Invalid signature malleability");
+        require(ecrecover(messageHash, v, r, s) == expectedSigner, "Invalid signature malleability");
 
         return true;
     }
-   
+
     function getEthSignedMessageHash(bytes32 _messageHash) private  pure returns (bytes32) {
       
         return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
@@ -741,8 +729,8 @@ contract MetaCraftIDO is ReentrancyGuard {
         nonReentrant 
         notContract
         public {
-            chainId = block.chainid;
-            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender,chainId);
+        
+            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
             require(message == challenge,"message not correct!");
             bool isVerified = verified(publicKey,challenge, signature);
             require(isVerified, "Verify Error!");
@@ -807,8 +795,7 @@ contract MetaCraftIDO is ReentrancyGuard {
     //onlyOwner 
     {
         
-        chainId = block.chainid;
-        bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender,chainId);
+        bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
         require(message == challenge,"message not correct!");
         bool isVerified = verified(publicKey,challenge, signature);
         require(isVerified, "Verify Error!");
@@ -847,39 +834,38 @@ contract MetaCraftIDO is ReentrancyGuard {
         notContract
         public {
         
-            chainId = block.chainid;
-            bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender,chainId);
-            require(message == challenge,"message not correct!");
-            bool isVerified = verified(publicKey,challenge, signature);
-            require(isVerified, "Verify Error!");
+        bytes32 challenge = getChallenge(timestamp, nonce,userLevel, msg.sender);
+        require(message == challenge,"message not correct!");
+        bool isVerified = verified(publicKey,challenge, signature);
+        require(isVerified, "Verify Error!");
 
-            // require(isIssued==true,"Token not issued!");
-            Investor storage invest = investorByAddress[msg.sender];
+        // require(isIssued==true,"Token not issued!");
+        Investor storage invest = investorByAddress[msg.sender];
 
-            require(projectCoinAddress==projectCoinAddress_, "The Project Coin Address is incorrect");
-            require(msg.sender==invest.investorAddress,"Only the Investor can Claim tokens!");
-            //require(raiseStatus == 3 || raiseStatus == 4,"You can only Claim during the Protected or Claim status");
-            require(block.timestamp >= protectTimestamp, "you should refund after the IDO is in protect ");
-            require(invest.refundedCoinAmount == 0, "You had already Refunded out!");
-            require(invest.claimedProjectCoinAmount == 0, "You had already Claimed out!");
-            uint256 claimAmount = invest.investedCoinAmount * 10 ** decimals / projectCoinPrice ; 
-            require(IERC20(projectCoinAddress_).balanceOf(address(this))>=  claimAmount, "Project Coin amount insufficient");
+        require(projectCoinAddress==projectCoinAddress_, "The Project Coin Address is incorrect");
+        require(msg.sender==invest.investorAddress,"Only the Investor can Claim tokens!");
+        //require(raiseStatus == 3 || raiseStatus == 4,"You can only Claim during the Protected or Claim status");
+        require(block.timestamp >= protectTimestamp, "you should refund after the IDO is in protect ");
+        require(invest.refundedCoinAmount == 0, "You had already Refunded out!");
+        require(invest.claimedProjectCoinAmount == 0, "You had already Claimed out!");
+        uint256 claimAmount = invest.investedCoinAmount * 10 ** decimals / projectCoinPrice ; 
+        require(IERC20(projectCoinAddress_).balanceOf(address(this))>=  claimAmount, "Project Coin amount insufficient");
 
-            //require(IERC20(projectCoinAddress_).approve(address(this),  claimAmount), "Approve has failed"); 
-            IERC20(projectCoinAddress_).safeTransfer(invest.investorAddress, claimAmount);     
-            
-            invest.claimedProjectCoinAmount +=claimAmount;
-            invest.claimedAt = block.timestamp;
+        //require(IERC20(projectCoinAddress_).approve(address(this),  claimAmount), "Approve has failed"); 
+        IERC20(projectCoinAddress_).safeTransfer(invest.investorAddress, claimAmount);     
+        
+        invest.claimedProjectCoinAmount +=claimAmount;
+        invest.claimedAt = block.timestamp;
 
-            uint256 index = investorIndex[msg.sender];
-            investors[index].claimedProjectCoinAmount += claimAmount;
-            investors[index].claimedAt = block.timestamp;   
-            
-            claimedAmount[projectCoinAddress_] +=  claimAmount;
-            projectCoinAmount[projectCoinAddress_] = IERC20(projectCoinAddress_).balanceOf(address(this));
+        uint256 index = investorIndex[msg.sender];
+        investors[index].claimedProjectCoinAmount += claimAmount;
+        investors[index].claimedAt = block.timestamp;   
+        
+        claimedAmount[projectCoinAddress_] +=  claimAmount;
+        projectCoinAmount[projectCoinAddress_] = IERC20(projectCoinAddress_).balanceOf(address(this));
 
-            emit IDOEvents(block.timestamp, msg.sender, "Claim");
-            emit IDOStatusChange(projectCoinAddress_, claimAmount, msg.sender,  string(abi.encodePacked("Claim ",userLevel))); 
+        emit IDOEvents(block.timestamp, msg.sender, "Claim");
+        emit IDOStatusChange(projectCoinAddress_, claimAmount, msg.sender,  string(abi.encodePacked("Claim ",userLevel))); 
     }
 
     function getInvestsByOwner(address who_)
@@ -944,8 +930,7 @@ contract MetaCraftIDO is ReentrancyGuard {
         else if(tokenAddress_ == projectCoinAddress){
             uint256 investAmount =  investedAmount[investCoinAddress];
             uint256 claimAmount = claimedAmount[projectCoinAddress];
-
-            require((investAmount * 10 ** decimals / projectCoinPrice - claimAmount == 0 ),"Some others not claimed, can not withdraw so many!");
+            require((investAmount * 10 ** decimals / projectCoinPrice - claimAmount) ==0,"Some others not claimed, can not withdraw so many!");
 
 
             projectCoinAmount[tokenAddress_] -= amount_;
