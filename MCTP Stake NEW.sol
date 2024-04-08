@@ -84,6 +84,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         _;
     }
     function  deleteMaxPendingTx()
+
     private 
     {
          require(_pendingTransactions.length <= 1,"has pending txs! Please sign them first");   
@@ -145,9 +146,6 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             require(_owner != address(0),"Zero Address Error!");
             deleteMaxPendingTx();
 
-            
-
-
             uint256 transactionId = _transactionIdx++;
             TxDelOwner memory txOwner;
             
@@ -187,7 +185,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             }
     }
     function deleteAddUserTx(uint transactionId)
-        validOwner
+        
         private {
             TxAddOwner memory transaction = _txaddowners[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
@@ -232,7 +230,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             }
     }
    function deleteDelUserTx(uint transactionId)
-        validOwner
+        
         private {
             TxDelOwner memory transaction = _txdelowners[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
@@ -321,7 +319,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
        
         return _owners[_owner];
     }
-     function signTransaction(uint transactionId) validOwner public {
+     function signTransaction(uint transactionId) 
+     validOwner 
+     public {
         Transaction storage transaction = _transactions[transactionId];
        
         require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
@@ -345,7 +345,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         }
     }
 
-    function executeTransaction(uint transactionId) public {
+    function executeTransaction(uint transactionId) 
+    validOwner
+    public  {
         Transaction storage transaction = _transactions[transactionId];
         require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
         require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
@@ -357,8 +359,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     }
 
     function deleteTransaction(uint transactionId)
-        validOwner
-        private {
+        
+        private 
+        {
             Transaction memory transaction = _transactions[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
            

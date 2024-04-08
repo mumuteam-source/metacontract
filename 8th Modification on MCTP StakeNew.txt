@@ -1,0 +1,19 @@
+1. MTS-03 | Discussion on Potential Unintended Max Pending Time
+Discussion
+Answer:
+Some times, a valid owner agree the multi-sign, but forget to sign it, we can inform him
+within 96 hours after the last sign transaction.
+But if we do not change the transaction.timestamp each sign, there was a 3*24 = 72 hours time frame validation,and a 24 hours 
+observationPeriod. If there is 2 valid owner signed, and the last valid owner forgot to sign, there are only 24 hours left.
+So we use the timestamp refresh mechanism on each signature. 
+The 96 hours max-waiting is after the last sign but not reaching the minimum required signatures.
+
+2. MTS-02 | Potential Inconsistent Permission Restrictions
+Informational
+Modified:
+We changed the functions such as deleteAddUserTx, deleteDelUserTx, deleteTransaction, deleteMaxPendingTx as private and do not
+check the valid onwer by omit the validOwner modifier. 
+add the executeTransaction as an validOwner function.
+which in order to make sure the functions can be called consistency.
+
+
