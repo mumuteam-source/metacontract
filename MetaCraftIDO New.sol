@@ -161,8 +161,8 @@ contract MetaCraftIDO is ReentrancyGuard {
     mapping ( uint=>mapping(address => uint8)) signatures;
     mapping (uint => Transaction) private _transactions;
     uint[] private _pendingTransactions;
-    uint256 public observationPeriod = 24 ;
-    uint256 public maxPendingTime = 96;
+    uint256 public observationPeriod = 24 hours;
+    uint256 public maxPendingTime = 96 hours;
 
     mapping (uint => TxAddOwner) private _txaddowners;
     mapping (uint => TxDelOwner) private _txdelowners;
@@ -172,6 +172,7 @@ contract MetaCraftIDO is ReentrancyGuard {
         _;
     }
     function  deleteMaxPendingTx()
+
     private 
     {
          require(_pendingTransactions.length <= 1,"has pending txs! Please sign them first");   
@@ -211,10 +212,9 @@ contract MetaCraftIDO is ReentrancyGuard {
         {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-            
-
             deleteMaxPendingTx();
 
+           
             uint256 transactionId = _transactionIdx++;
             TxAddOwner memory txOwner;
             
@@ -229,14 +229,10 @@ contract MetaCraftIDO is ReentrancyGuard {
     }
 
     function removeOwner(address _owner)
-        
         public {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
-           
-
             deleteMaxPendingTx();
-
 
             uint256 transactionId = _transactionIdx++;
             TxDelOwner memory txOwner;
@@ -277,7 +273,7 @@ contract MetaCraftIDO is ReentrancyGuard {
             }
     }
     function deleteAddUserTx(uint transactionId)
-        validOwner
+        
         private {
             TxAddOwner memory transaction = _txaddowners[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
@@ -322,7 +318,7 @@ contract MetaCraftIDO is ReentrancyGuard {
             }
     }
    function deleteDelUserTx(uint transactionId)
-        validOwner
+        
         private {
             TxDelOwner memory transaction = _txdelowners[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
@@ -364,7 +360,7 @@ contract MetaCraftIDO is ReentrancyGuard {
 
         chainId = block.chainid;
 
-        _owners[msg.sender] =1;
+      
         _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
         _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
         _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
@@ -376,50 +372,76 @@ contract MetaCraftIDO is ReentrancyGuard {
       returns (uint[] memory) {
       return _pendingTransactions;
     }
+    function getPendingTransaction(uint transactionId)
+      view
+      public
+      returns (Transaction memory, TxAddOwner memory, TxDelOwner memory) {
+        Transaction storage pendingwithdrawTx = _transactions[transactionId];
+        TxAddOwner storage pendingaddTx = _txaddowners[transactionId];
+        TxDelOwner storage pendingdelTx = _txdelowners[transactionId];
 
-    function signTransaction(uint transactionId)
-      validOwner
-      public {
+      return (pendingwithdrawTx,pendingaddTx,pendingdelTx);
+    }
+    function  getValidOwner(address _owner)  view public returns (uint){
+       
+        return _owners[_owner];
+    }
+     function signTransaction(uint transactionId) 
+     validOwner 
+     public {
+        Transaction storage transaction = _transactions[transactionId];
+       
+        require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
+        // Creator cannot sign the transaction
+        require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
+        // Cannot sign a transaction more than once
+        require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+        // no more than MIN_SIGNATURES Signs
+        require(transaction.signatureCount < MIN_SIGNATURES, "MS has satisfied, No need further Sign!");
+        // can not sign within once within 24 hours
+        require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 24 Hours for each signers !");
 
-            Transaction storage transaction = _transactions[transactionId];
+        signatures[transactionId][msg.sender] = 1;
 
-            // Transaction must exist
-            require(address(0) != transaction.withdrawAddress_,  "Fee To Zero Addresses!");
-            // Creator cannot sign the transaction
-            require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
-            // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
-            // can not sign within once within 24 hours
-            require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 48 Hours for at Least 2 signers !");
+        transaction.signatureCount++;
+        transaction.timestamp= block.timestamp;
+        
+        if (transaction.signatureCount == MIN_SIGNATURES) {
+            transaction.readyForExecutionTimestamp = block.timestamp + observationPeriod;
+            emit TransactionReadyForExecution(transaction.withdrawAddress_, transaction.readyForExecutionTimestamp, transactionId);
+        }
+    }
 
-            signatures[transactionId][msg.sender] = 1;
+    function executeTransaction(uint transactionId) 
+    validOwner
+    public  {
+        Transaction storage transaction = _transactions[transactionId];
+        require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
+        require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
+        require(block.timestamp >= transaction.readyForExecutionTimestamp, "Transaction is not ready for execution");
 
-            transaction.signatureCount++;
-            transaction.timestamp= block.timestamp;
-
-            emit TransactionSigned(msg.sender, transactionId);
-            // at least Sign twice, this will larger than 48 Hours
-            if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    withdrawAddress = payable(transaction.withdrawAddress_);
-                
-                    emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
-                    deleteTransaction(transactionId);
-            }
+        withdrawAddress = payable(transaction.withdrawAddress_);
+        emit TransactionCompleted(transaction.withdrawAddress_, block.timestamp, transactionId);
+        deleteTransaction(transactionId);
     }
 
     function deleteTransaction(uint transactionId)
-        validOwner
-        public {
-            uint8 replace = 0;
-            for(uint i = 0; i < _pendingTransactions.length; i++) {
-                if (1 == replace) {
-                _pendingTransactions[i-1] = _pendingTransactions[i];
-                } else if (transactionId == _pendingTransactions[i]) {
-                replace = 1;
+        
+        private 
+        {
+            Transaction memory transaction = _transactions[transactionId];
+            require(transaction.timestamp > 0, "transaction not exist!");
+           
+            uint256 txLength = _pendingTransactions.length;
+            for (uint256 i = 0; i < txLength; i++) {
+                if (_pendingTransactions[i] == transactionId) {
+                    
+                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
+                   
+                    _pendingTransactions.pop();
+                    break;
                 }
             }
-            delete _pendingTransactions[_pendingTransactions.length - 1];
-            _pendingTransactions.pop();
             delete _transactions[transactionId];
     }
 
@@ -931,22 +953,21 @@ contract MetaCraftIDO is ReentrancyGuard {
     nonReentrant 
     notContract 
     withdrawAddressOnly() {
-        //uint256 balance = IERC20(tokenAddress_).balanceOf(address(this));
+        uint256 balance = IERC20(tokenAddress_).balanceOf(address(this));
+        require(balance >= amount_, "balance insufficent!");
         require(investCoinAddress == tokenAddress_ || projectCoinAddress == tokenAddress_, "Coin Address Not Correct!");
         require(block.timestamp - claimTimestamp >= 3 days, "Withdraw Fund Until 72 hours after Claim ");
 
+        uint256 investAmount =  investedAmount[investCoinAddress];
+        uint256 claimAmount = claimedAmount[projectCoinAddress];
+
         if(tokenAddress_ == investCoinAddress){
-            require(investedAmount[tokenAddress_] >= amount_, "balance insufficent!");
-            investedAmount[tokenAddress_] -= amount_;
+           
             refundedAmount[tokenAddress_] += amount_;
             emit IDOStatusChange(tokenAddress_, amount_, msg.sender, "Manager Withdraw invest Coins");
             }
         else if(tokenAddress_ == projectCoinAddress){
-            uint256 investAmount =  investedAmount[investCoinAddress];
-            uint256 claimAmount = claimedAmount[projectCoinAddress];
-
             require((investAmount * 10 ** decimals / projectCoinPrice - claimAmount == 0 ),"Some others not claimed, can not withdraw so many!");
-
 
             projectCoinAmount[tokenAddress_] -= amount_;
             claimedAmount[tokenAddress_] += amount_;

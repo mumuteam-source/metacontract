@@ -1,0 +1,35 @@
+1. GLOBAL-01 | Centralization Related Risks
+Major:
+Modified
+We use the multi-sign for these risks.
+
+2. *MCD-03 | Time Lock Bypass in Pending Proposal Deletion
+Medium
+Modified:
+set the deleteTransaction() function to private. 
+
+
+3. MCD-04 | Incorrect Time Lock Setting in `deleteMaxPendingTx()` Function
+Minor
+Modified:
+adjust the maxPendingTime value from 96 seconds to 96 hours.
+
+4.  * MCI-16 | Unclaimed Tokens Can Be Withdrawn by `withdrawAddress`
+Minor
+Modified
+The the change of investedAmount[investCoinAddress] in the withdraw function 
+is deleted. protect time ended, this Amount should be not changed. 
+so could caculate a correct number of unclaimed project coins.
+
+5. MCD-02 | Absence of Time Lock in `signUserAdd()` and `signUserDel()` Functions
+Discussion
+Answer:
+Adding/Deleting validOwner is working for multi-sign to weak the centralization risk of the owner.
+Any valid owner can do NOTHING without MIN_SIGNATURES accounts have signed the tranaction.
+And the valid owners can only add,delete, espencially, set withdraw address.
+although add or remove valie owner execute immediately, but any of these valid owners 
+would be multi-signed, so, this two functions need NOT the timelock.
+
+6. MCD-05 | Incorrect Comment
+Informational
+Modified
