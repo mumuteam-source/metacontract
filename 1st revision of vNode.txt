@@ -1,0 +1,100 @@
+1. MET-02 | Centralization Related Risks
+Major
+Answer:we use multisig for centralization risks;
+onlyOwner functions:
+
+addOwner(): Used to create a pending transaction for adding a new validOwner.
+removeOwner(): Used to create a pending transaction for removing an existed validOwner.
+setSalesAddress(): Used to create a pending transaction for setting a new feeAddress.
+
+we use multisig for these 3 functions, they are called by the owner, and will be set the parameter
+after reached the max sign transactions.
+
+lockTokens(): Used to set the locked status of ERC721 token circulation.
+setNodeParams(): Used to change currentMaxNodes and mintPrice.
+we removed these 2 functions, and add one setParameters function with multisig to set locked and currentMaxNodes as well as mintPrice;
+validOwner functions:
+signUserAdd(): Used to sign/execute the pending transactions of adding a new validOwner.
+signUserDel(): Used to sign/execute the pending transactions of removing a new validOwner.
+signTransaction(): Used to sign the pending transactions of updating the feeAddress.
+executeTransaction(): Used to execute a pending transaction and update feeAddress.
+
+these 4 functions are used for multisig and release the centralization risks;
+
+
+______________________
+2. MPN-05 | Different `tokenId` Could have the Same URI
+Medium
+Modified:
+We removed the functions like setBaseURI and baseURI_ and the variable of _baseURIextended;
+
+3. MPN-06 | Lack Of Access Control
+Medium
+Modified:
+We removed the functions like setBaseURI and baseURI_ and the variable of _baseURIextended;
+
+__________________________________
+
+4. MPN-08 | State Variable Shadowing
+Medium
+Modified
+we modified the _owners to _validOwners to seprated from the _owners in ERC721.sol;
+
+_________________________________________
+
+5.MPN-09 | Duplicate with `transferFrom()` function
+Minor
+Medified
+
+We removed the transNFT in the vNode contract, and use the transferFrom Function of standard ERC721 contract;
+___________________________________________
+
+6. MPN-10 | Could Use `safeTransferFrom` instead of `transferFrom`
+Minor
+Medified
+we use the safeTransferFrom function instead of transferFrom on NFT transfer.
+
+__________________________________
+7. MPN-13 | User May Experience Unexpected `mintPrice`
+Minor
+Modified
+We added one parameter named maxPrice to check where the mintPrice overflow;
+
+_________________________________________
+
+8. MPN-04 | Concerns about usage scenarios of `feeAddress` when updating
+Discussion
+Answer:
+Yes, the feeAddress can be receive tokens until the multisig reached the max signs.
+_________________________________________
+
+9. MPN-01 | Variables That Could Be Declared as Immutable
+
+Optimization
+Modified
+We changed the variables into Immutable in the constructor.
+_________________________________________
+10 .MPN-02 | State Variable Should Be Declared Constant
+Optimization
+Modified
+We modified the observationPeriod and maxPendingTime into constant;
+
+11. MPN-03 | Inefficient Memory Parameter
+Optimization
+Moeified
+We modified the memory parameter into calldata, and the public function into external;
+
+12. MPN-07 | Deprecated Usage of `Counters.sol`
+Informational
+Modified
+We removed the Counters.sol, and use the uint256 type with +1 to get the new tokenId;
+
+13. MPN-11 | The Argument `_to` Can be Removed
+Informational
+Modified
+we removed the _to paramater；
+
+14 MPN-12 | Contract Lacks the Implementation of Function `onERC721Received()`
+Informational
+modified
+we have implemented the IERC721Receiver interface and onERC721Received function.

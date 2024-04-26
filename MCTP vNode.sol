@@ -2,30 +2,34 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";    
-import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";   
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract MetaCraftVNode is ERC721{
+
+contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     // ERC20 token used for minting NFT
-    IERC20 public ERC20Token;
+    
+    IERC20 public immutable ERC20Token;
+    uint256 public immutable tokenDecimals;
     using SafeERC20 for IERC20;
-    using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
-    address private owner;
-    // Base URI
-    string private _baseURIextended;
+    uint256 public _tokenIds;
+    address private immutable owner;
+   
     // Mapping to track minted addresses
     mapping(address => bool) public _mintedAddresses;
-
+    //tokenURI
+    string public constant nodeTokenURI = "ipfs://QmZ1n7S2UHFmBbiGFzFHYsTJoLwbU29rTDquxPccSNqajg";
     // Price in ERC20 tokens to mint NFT
-    uint256 public mintPrice;
+    uint256 public  mintPrice;
     bool public locked = true;
+    bool public halted = false;
 
-    uint256 public currentMaxNodes = 500;
     
       // Optional mapping for token URIs
     mapping (uint256 => string) private _tokenURIs;
@@ -34,6 +38,12 @@ contract MetaCraftVNode is ERC721{
     // tokenOwner
     mapping (uint256=>address) public tokenOwner;
     mapping (address => NodeInfo) public nodes;
+
+    uint256 constant public PRICE_INCREMENT = 500;
+    uint256 constant public ID_INCREMENT = 500;
+    uint256 constant public MAX_ID = 50000;
+
+    address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);
     address payable  public feeAddress = payable(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
     // Event emitted when an NFT is minted
 
@@ -41,6 +51,7 @@ contract MetaCraftVNode is ERC721{
     event TransactionCreated(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
     event TransactionCompleted(address withdrawAddress,  uint256 timestamp, uint256 transactionId);
     event TransactionSigned(address by, uint transactionId);
+
     event NodeEvents(
         uint256 timeStamp,
         address eventSender,          
@@ -54,10 +65,21 @@ contract MetaCraftVNode is ERC721{
 
     struct Transaction {
       address withdrawAddress_;
+      bool locked_;
+      uint256 nodeCount_;
+      uint256 mintPrice_;
       uint8 signatureCount;
       uint256 readyForExecutionTimestamp; 
       uint256 timestamp;
     }
+
+     struct TxSetParam {
+      bool locked_;
+      bool halted_;
+      uint8 signatureCount;
+      uint256 timestamp;
+    }
+
     struct TokenInfo {
         uint256 tokenId;
         address tokenOwner;
@@ -70,15 +92,16 @@ contract MetaCraftVNode is ERC721{
         TokenInfo tokenInfo;
     }
 
-    mapping(address => uint8) private _owners;
+    mapping(address => uint8) private _validOwners;
     mapping ( uint=>mapping(address => uint8)) signatures;
     mapping (uint => Transaction) private _transactions;
     uint[] private _pendingTransactions;
-    uint256 public observationPeriod = 24 hours;
-    uint256 public maxPendingTime = 96 hours;
+    uint256 public constant observationPeriod = 24 hours ;
+    uint256 public constant maxPendingTime = 96 hours;
 
     mapping (uint => TxAddOwner) private _txaddowners;
     mapping (uint => TxDelOwner) private _txdelowners;
+    mapping (uint => TxSetParam) private _txsetparams;
 
     struct TxAddOwner {
       address owner;
@@ -99,21 +122,32 @@ contract MetaCraftVNode is ERC721{
         string memory _name,
         string memory _symbol,
         address _erc20Token,
-        uint256 _mintPrice
+        uint256 _decimals
+        //uint256 _mintPrice
     ) ERC721(_name, _symbol) {
         ERC20Token = IERC20(_erc20Token);
-        mintPrice = _mintPrice * 10 ** 18;
+        tokenDecimals = _decimals;
         owner = msg.sender;
 
-       _owners[address(0xce44C139234E2E8146c82eF42dC3d9fc39833361)] = 1;
-       _owners[address(0xd0c06ced3DFaA617c105166BB5cADc317DaaA41B)] = 1;
-       _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
-    }
-     modifier validOwner() {
-        require(_owners[msg.sender] == 1, "not Authorized Mulsig User !");
-        _;
+       _validOwners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
+       _validOwners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
+       _validOwners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
     }
 
+    function onERC721Received(address, address, uint256, bytes calldata)
+    external 
+    override
+    pure
+    returns(bytes4)
+    {
+        //tokenOwner[tokenId] = from;
+        return this.onERC721Received.selector;
+    }
+    modifier validOwner() {
+        require(_validOwners[msg.sender] == 1, "not Authorized Mulsig User !");
+        _;
+    }
+   
     function  deleteMaxPendingTx()
 
     private 
@@ -125,6 +159,7 @@ contract MetaCraftVNode is ERC721{
                 Transaction storage pendingwithdrawTx = _transactions[txId];
                 TxAddOwner storage pendingaddTx = _txaddowners[txId];
                 TxDelOwner storage pendingdelTx = _txdelowners[txId];
+                TxSetParam storage pendingsetTx = _txsetparams[txId];
                 //for withdraw Txs
                 if (pendingwithdrawTx.timestamp > 0 ){
                     if(block.timestamp - pendingwithdrawTx.timestamp > maxPendingTime){
@@ -143,6 +178,14 @@ contract MetaCraftVNode is ERC721{
                 if (pendingdelTx.timestamp > 0 ){
                     if (block.timestamp - pendingdelTx.timestamp > maxPendingTime){
                         deleteDelUserTx(txId);
+                    }else revert("has pending txs yet! Please sign them first");
+                    
+                }
+
+                //for set param Txs
+                if (pendingsetTx.timestamp > 0 ){
+                    if (block.timestamp - pendingsetTx.timestamp > maxPendingTime){
+                        deleteSetParamTx(txId);
                     }else revert("has pending txs yet! Please sign them first");
                     
                 }
@@ -210,7 +253,7 @@ contract MetaCraftVNode is ERC721{
             emit TransactionSigned(msg.sender, transactionId);
            
             if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    _owners[(transaction.owner)]=1;
+                    _validOwners[(transaction.owner)]=1;
                     emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
                     deleteAddUserTx(transactionId);
             }
@@ -254,13 +297,13 @@ contract MetaCraftVNode is ERC721{
             emit TransactionSigned(msg.sender, transactionId);
            
             if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    _owners[transaction.owner]=0;
+                    _validOwners[transaction.owner]=0;
                 
                     emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
                     deleteDelUserTx(transactionId);
             }
     }
-   function deleteDelUserTx(uint transactionId)
+    function deleteDelUserTx(uint transactionId)
         
         private {
             TxDelOwner memory transaction = _txdelowners[transactionId];
@@ -279,6 +322,74 @@ contract MetaCraftVNode is ERC721{
             delete _txdelowners[transactionId];
     }
 
+    function setParameters ( bool isLock_, bool isHalt_)
+    public
+    {
+        require(msg.sender==owner,"Only owner can set Parameters");
+       
+        deleteMaxPendingTx();
+
+        uint256 transactionId = _transactionIdx++;
+
+        TxSetParam memory transaction;
+        
+       
+        transaction.locked_ = isLock_;
+        transaction.halted_ = isHalt_;
+        
+        transaction.timestamp = block.timestamp;
+        transaction.signatureCount = 0;
+        _txsetparams[transactionId]=transaction;
+        _pendingTransactions.push(transactionId);
+
+        emit TransactionCreated(msg.sender,  block.timestamp, transactionId);
+        emit NodeEvents(block.timestamp,msg.sender, "setParamters");
+    }
+
+    function signSetParam(uint transactionId)
+      validOwner
+      public {
+
+            TxSetParam storage transaction = _txsetparams[transactionId];
+
+            // Transaction must exist
+            
+            // Cannot sign a transaction more than once
+            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+            signatures[transactionId][msg.sender] = 1;
+
+            transaction.signatureCount++;
+            transaction.timestamp= block.timestamp;
+
+            emit TransactionSigned(msg.sender, transactionId);
+           
+            if (transaction.signatureCount >= MIN_SIGNATURES) {
+                    locked = transaction.locked_;
+                    halted = transaction.halted_;
+                    
+                    emit TransactionCompleted(msg.sender, block.timestamp, transactionId);
+                    deleteSetParamTx(transactionId);
+            }
+    }
+    function deleteSetParamTx(uint transactionId)
+        
+        private {
+            TxSetParam memory transaction = _txsetparams[transactionId];
+            require(transaction.timestamp > 0, "transaction not exist!");
+           
+            uint256 txLength = _pendingTransactions.length;
+            for (uint256 i = 0; i < txLength; i++) {
+                if (_pendingTransactions[i] == transactionId) {
+                    
+                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
+                   
+                    _pendingTransactions.pop();
+                    break;
+                }
+            }
+            delete _txsetparams[transactionId];
+    }
+
     function getPendingTransactions()
       view
       public
@@ -288,16 +399,16 @@ contract MetaCraftVNode is ERC721{
     function getPendingTransaction(uint transactionId)
       view
       public
-      returns (Transaction memory, TxAddOwner memory, TxDelOwner memory) {
+      returns (Transaction memory, TxAddOwner memory, TxDelOwner memory, TxSetParam memory) {
         Transaction storage pendingwithdrawTx = _transactions[transactionId];
         TxAddOwner storage pendingaddTx = _txaddowners[transactionId];
         TxDelOwner storage pendingdelTx = _txdelowners[transactionId];
-
-      return (pendingwithdrawTx,pendingaddTx,pendingdelTx);
+        TxSetParam storage pendingsetparamTx = _txsetparams[transactionId];
+        return (pendingwithdrawTx,pendingaddTx,pendingdelTx,pendingsetparamTx);
     }
     function  getValidOwner(address _owner)  view public returns (uint){
        
-        return _owners[_owner];
+        return _validOwners[_owner];
     }
      function signTransaction(uint transactionId) 
      validOwner 
@@ -358,7 +469,7 @@ contract MetaCraftVNode is ERC721{
             delete _transactions[transactionId];
     }
 
-    function setSalesAddress ( address _withdrawAddress )
+    function setSalesAddress ( address _withdrawAddress)
     public
     
     {
@@ -373,6 +484,7 @@ contract MetaCraftVNode is ERC721{
         Transaction memory transaction;
         
         transaction.withdrawAddress_ = _withdrawAddress;
+
         transaction.timestamp = block.timestamp;
         transaction.signatureCount = 0;
         _transactions[transactionId]=transaction;
@@ -381,63 +493,39 @@ contract MetaCraftVNode is ERC721{
         emit TransactionCreated(_withdrawAddress,  block.timestamp, transactionId);
         emit NodeEvents(block.timestamp,msg.sender, "setFeeAddress");
     }
+    
+    
 
-    function lockTokens () public {
-        require (msg.sender == owner, "Only Owner can set  this!");
-        locked = !locked;
-    }
-    
-    function setNodeParams (uint256 nodeCount, uint256 mintPrice_) public {
-        require (msg.sender == owner, "Only Owner can set  this!");
-        currentMaxNodes = nodeCount;
-        mintPrice = mintPrice_ * 10 ** 18;
-    }
-
-    
-    
-    function setBaseURI(string memory baseURI_) external {
-        _baseURIextended = baseURI_;
-    }
-    
-    function _setTokenURI(uint256 tokenId, string memory _tokenURI) internal virtual 
-        //override(ERC721URIStorage)
-        {
-        require(tokenId <= _tokenIds.current(), "ERC721Metadata: URI set of nonexistent token");
-        _tokenURIs[tokenId] = _tokenURI;
-    }
-    
-    function _baseURI() internal view virtual override returns (string memory) {
-        return _baseURIextended;
-    }
-    
     function tokenURI(uint256 tokenId) public view virtual 
     override(ERC721) 
     returns (string memory) {
-        require(tokenId <= _tokenIds.current(), "ERC721Metadata: URI query for nonexistent token");
+        require(tokenId <= _tokenIds, "ERC721Metadata: URI query for nonexistent token");
 
         string memory _tokenURI = _tokenURIs[tokenId];
-        string memory base = _baseURI();
+       
+        return _tokenURI;
         
-        // If there is no base URI, return the token URI.cons
-        if (bytes(base).length == 0) {
-            return _tokenURI;
-        }
-        // If both are set, concatenate the baseURI and tokenURI (via abi.encodePacked).
-        if (bytes(_tokenURI).length > 0) {
-            return string(abi.encodePacked(base, _tokenURI));
-        }
-        // If there is a baseURI but no tokenURI, concatenate the tokenID to the baseURI.
-        return string(abi.encodePacked(base, uint256ToString(tokenId)));
     }
 
     function buyNode(
-        address _to,
-        string memory tokenURI_,
-        address parentAddress
-        //uint256 tokenPrice
-    ) public returns (uint256){
-
-        require(_to == msg.sender, "User Address Error!");
+        uint256 timestamp,
+        bytes32 nonce,
+        bytes32 message,
+        bytes memory signature,
+        address parentAddress,
+        uint256 maxPrice
+    ) 
+    nonReentrant 
+    notContract
+    external  
+    returns (uint256){
+        require(!halted, "Node Halted!");
+        
+        bytes32 challenge = getChallenge(timestamp, nonce, parentAddress, msg.sender);
+        require(message == challenge,"message not correct!");
+        bool isVerified = verified(publicKey,challenge, signature);
+        require(isVerified, "Verify Error!");
+        //require(_to == msg.sender, "User Address Error!");
         require(!_mintedAddresses[msg.sender], "Address already minted an NFT");
         if(parentAddress!=address(0)){
             require(_mintedAddresses[parentAddress],"parent Not Minted Already");
@@ -447,20 +535,21 @@ contract MetaCraftVNode is ERC721{
             parent[msg.sender] = address(0);
         }
         
-        ERC20Token.safeTransferFrom(msg.sender, feeAddress, mintPrice);
-
-        _tokenIds.increment();
-        uint256 newItemId = _tokenIds.current();
         
-        require(newItemId <= currentMaxNodes,  "Nodes number exceeds!");
+        uint256 newItemId =++_tokenIds;
 
-        _mint(_to, newItemId);
-        _setTokenURI(newItemId, tokenURI_);
+        mintPrice = calculatePrice(newItemId);
+        require(mintPrice <= maxPrice, "price overflow");
+        
+        ERC20Token.safeTransferFrom(msg.sender, feeAddress, mintPrice);
+        _mint(msg.sender, newItemId);
+        //_setTokenURI(newItemId, nodeTokenURI);
+        _tokenURIs[newItemId] = nodeTokenURI;
         tokenOwner[newItemId] = msg.sender;
 
-        transNFT(msg.sender, address(this), newItemId);
+        transferFrom(msg.sender, address(this), newItemId);
         _mintedAddresses[msg.sender]=true;
-
+        
         TokenInfo memory token = TokenInfo({
             tokenId: newItemId,
             tokenOwner: msg.sender,
@@ -480,24 +569,19 @@ contract MetaCraftVNode is ERC721{
         return newItemId;
     }
 
-    function transNFT(
-        address _from,
-        address _to,
-        uint256 tokenId
-	) 
-        public returns (uint256) {
-        require(msg.sender == ownerOf(tokenId),"Only the owner of this Token could transfer It!");
-        transferFrom(_from,_to,tokenId);
-	    return tokenId;
-    }
 
     function userFetchToken(
-        uint256 tokenId
-    )public 
+        uint256 tokenId,
+        address receiver
+    )
+    public 
+    nonReentrant 
+    notContract
     {
         require(tokenOwner[tokenId]== msg.sender,"Token Owner not Correct!");
+        require(tokenOwner[tokenId] == receiver, "Token receiver not Correct!");
         require(!locked, "Token Can not be fetch currently!");
-        ERC721(this).transferFrom(address(this), msg.sender, tokenId);
+        ERC721(this).safeTransferFrom(address(this), receiver, tokenId);
         emit NodeStatusChange(msg.sender,parent[msg.sender],tokenId, "Fetch", block.timestamp);    
     }
 
@@ -505,7 +589,12 @@ contract MetaCraftVNode is ERC721{
     function getTokenOwner(uint256 tokenId) public view returns (address) {
         return tokenOwner[tokenId];
     }
-
+    function ownerOf(uint256 tokenId) public override view returns (address) {
+        address currentOwner = super.ownerOf(tokenId);
+        if(currentOwner == address(this)) return tokenOwner[tokenId];
+        else return super.ownerOf(tokenId);
+    }
+    
     function getAddressInfo(address userAddress) public view returns(NodeInfo memory  ){
         return nodes[userAddress];
     }
@@ -513,9 +602,10 @@ contract MetaCraftVNode is ERC721{
         return _mintedAddresses[userAddress];
     }
 
-    function getNodesInfo()public view returns(uint256,uint256,uint256,uint256)
+    function getNodesInfo()public view returns(uint256,uint256,uint256)
     {
-        return (mintPrice, _tokenIds.current() + 1, _tokenIds.current(), currentMaxNodes);
+        uint256 currentTokenId = _tokenIds;
+        return (mintPrice, currentTokenId+1, currentTokenId);
     }
     function uint256ToString(uint256 value) public pure returns (string memory) {
             if (value == 0) {
@@ -534,6 +624,102 @@ contract MetaCraftVNode is ERC721{
                 value /= 10;
             }
             return string(buffer);
+    }
+     //get Challenge
+    function getChallenge(uint256 timestamp,
+                              bytes32 nonce, 
+                            address parentAddress,
+                              address userAddress
+                             ) public pure returns (bytes32){
+        
+        bytes32 challenge = keccak256(abi.encodePacked( userAddress, timestamp, nonce, parentAddress));
+       
+        return challenge;   
+    }
+    
+    function verified(
+        address expectedSigner,
+        bytes32 messageHash,
+        bytes memory signature
+    ) public  pure returns (bool) {     
+        bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
+        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
+        require(recoveredSigner == expectedSigner, "Invalid signature");
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
         }
+        require(ecrecover(ethSignedMessageHash, v, r, s) == expectedSigner, "Invalid signature malleability");
+
+        return true;
+    }
+
+    function checkVerify(
+        address signer,
+        bytes32 message,
+        bytes memory signature
+    ) public pure returns (address,address)
+    {
+        
+        (bytes32 r, bytes32 s, uint8 v) = splitSignature(signature);
+        bytes32 ethSignedMessageHash = getEthSignedMessageHash(message);
+        address recovered = ecrecover(ethSignedMessageHash, v, r, s);
+
+        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
+        require(recoveredSigner == signer, "Invalid signature");
+
+       return (recoveredSigner, recovered);
+    }
+   
+    function getEthSignedMessageHash(bytes32 _messageHash) private  pure returns (bytes32) {
+      
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
+    }
+
+    function splitSignature(bytes memory sig)
+    internal
+    pure
+    returns (bytes32 r, bytes32 s, uint8 v)
+    {
+        require(sig.length == 65, "invalid signature length");
+
+        assembly {
+            r := mload(add(sig, 32))
+            s := mload(add(sig, 64))   
+            v := byte(0, mload(add(sig, 96)))
+        }
+
+        if (v < 27) {
+            v += 27;
+        }
+    }
+
+    //not contract address
+    modifier notContract() {
+    require((!_isContract(msg.sender)) && (msg.sender == tx.origin), "contract not allowed");
+    _;
+    }
+
+    function _isContract(address addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
+    }
+
+    function calculatePrice(uint256 id) public view   returns (uint256) {
+        if (id > MAX_ID) {
+            revert("ID exceeds maximum limit");
+        }
+
+        uint256 priceLevel = ((id-1) / ID_INCREMENT) + 1;
+        return priceLevel * PRICE_INCREMENT * 10** tokenDecimals;
+    }
       
 }
