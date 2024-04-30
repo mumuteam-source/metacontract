@@ -1,0 +1,59 @@
+1.CTP-07 | Missing Existing Check For `TxSetParam` In `signSetParam`
+Medium
+Modified:
+as the recommandend, we added the check of whether the tx has beed created by check the timestamp of tx > 0
+
+_____________________________________________
+
+2. CTP-08 | Conflict Check to `tokenOwner[tokenId]` In `userFetchToken` Function
+Minor
+Modified:
+we  removed the redundant check of receiver and msg.sender with tokenOwner[tokenId]
+_____________________________________________
+3.CTP-01 | Not necessary using mapping to access constant variable
+Optimization
+Modified:
+we utilized the view function of TokenURI to directly return nodeTokenURI,
+and removed the mapping of _tokenURIs.
+_____________________________________________
+4.CTP-02 | Redundant `message` Parameter In `buyNode` Function
+Optimization
+Modified:
+we remove the message parameter from the function signature and directly use the result of getChallenge inside the function.
+_______________________________________________
+
+5. CTP-03 | Duplicate Signature Checking
+Optimization
+Modified:
+we modefied the function of verified() according the recommandation of Certik!
+
+_______________________________________________
+6. CTP-04 | Unused `timestamp` In `buyNode` Function
+Optimization
+not Modified
+Answer:
+this timestamp is not the block.timestamp, it is used to generate the message for sign in dapp as well as the Contract;
+—————————————————————————————————————————————————
+
+7. CTP-05 | Potential Optimization to Multi-Sign Mechanism
+Optimization
+Partialy Modified
+as the setSalesAddress function not the same as  AddOwner, removeOwner and setParameters, we Only modified the last three functions
+according to the recommandation of Certik.
+________________________________________________
+8. CTP-06 | Transfer Optimization In `buyNode`
+Optimization
+Modified
+we modified the mint of NFT token to the address(this) directly instead of mint to msg.sender and transfer it.
+
+9 CTP-09 | Potential Redundant Function `checkVerify` Function and Incomplete Security Checks in `splitSignature` Function
+Informational
+Modified
+We remove the checkVerify and splitSignature function
+——————————————————————————————————————————————————————————————
+10 CTP-10 | Wrong dependency path for imported modules
+Informational
+Modified
+we modified the import of ReentrancyGuard from security to utils under openzeppelin;
+
+

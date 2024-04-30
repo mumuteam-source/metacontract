@@ -8,13 +8,14 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 
 contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     // ERC20 token used for minting NFT
-    
+    using ECDSA for bytes32;
     IERC20 public immutable ERC20Token;
     uint256 public immutable tokenDecimals;
     using SafeERC20 for IERC20;
@@ -26,13 +27,13 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     //tokenURI
     string public constant nodeTokenURI = "ipfs://QmZ1n7S2UHFmBbiGFzFHYsTJoLwbU29rTDquxPccSNqajg";
     // Price in ERC20 tokens to mint NFT
-    uint256 public  mintPrice;
+    uint256 public mintPrice;
     bool public locked = true;
     bool public halted = false;
 
     
       // Optional mapping for token URIs
-    mapping (uint256 => string) private _tokenURIs;
+    //mapping (uint256 => string) private _tokenURIs;
     // address's parent
     mapping (address=>address) public parent;
     // tokenOwner
@@ -40,7 +41,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     mapping (address => NodeInfo) public nodes;
 
     uint256 constant public PRICE_INCREMENT = 500;
-    uint256 constant public ID_INCREMENT = 500;
+    uint256 constant public ID_INCREMENT = 5;
     uint256 constant public MAX_ID = 50000;
 
     address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);
@@ -73,13 +74,6 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
       uint256 timestamp;
     }
 
-     struct TxSetParam {
-      bool locked_;
-      bool halted_;
-      uint8 signatureCount;
-      uint256 timestamp;
-    }
-
     struct TokenInfo {
         uint256 tokenId;
         address tokenOwner;
@@ -91,29 +85,40 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         address nodeParent;
         TokenInfo tokenInfo;
     }
+    enum TransactionType {
+        AddOwner,
+        RemoveOwner,
+        SetParameter
+        //SetSalesAddress
+    }
+    struct SetTransaction {
+        TransactionType txType;
+        bytes data;
+        uint8 signatureCount;
+        uint256 timestamp;
+        bool executed;
+    }
+
+    mapping(uint => SetTransaction) private _settransactions;
+
+    uint[] private _pendingTransactions;
+
+    mapping(uint => mapping(address => bool)) private signatures;
+
+
+    modifier notExecuted(uint transactionId) {
+        SetTransaction memory transaction = _settransactions[transactionId];
+        require(transaction.timestamp > 0, "transaction not exist!");
+        require(!_settransactions[transactionId].executed, "Transaction already executed");
+        _;
+    }
 
     mapping(address => uint8) private _validOwners;
-    mapping ( uint=>mapping(address => uint8)) signatures;
+    //mapping ( uint=>mapping(address => uint8)) signatures;
     mapping (uint => Transaction) private _transactions;
-    uint[] private _pendingTransactions;
-    uint256 public constant observationPeriod = 24 hours ;
-    uint256 public constant maxPendingTime = 96 hours;
-
-    mapping (uint => TxAddOwner) private _txaddowners;
-    mapping (uint => TxDelOwner) private _txdelowners;
-    mapping (uint => TxSetParam) private _txsetparams;
-
-    struct TxAddOwner {
-      address owner;
-      uint8 signatureCount;
-      uint256 timestamp;
-    }
-
-     struct TxDelOwner {
-      address owner;
-      uint8 signatureCount;
-      uint256 timestamp;
-    }
+    //uint[] private _pendingTransactions;
+    uint256 public constant observationPeriod = 24 ;
+    uint256 public constant maxPendingTime = 96 ;
 
     uint constant MIN_SIGNATURES = 3;
     uint private _transactionIdx;
@@ -128,6 +133,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         ERC20Token = IERC20(_erc20Token);
         tokenDecimals = _decimals;
         owner = msg.sender;
+       
 
        _validOwners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
        _validOwners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
@@ -143,11 +149,23 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         //tokenOwner[tokenId] = from;
         return this.onERC721Received.selector;
     }
+
+    modifier onlySelf() {
+        require(msg.sender == address(this), "Unauthorized: can only be called by the contract itself");
+        _;
+    }
+
     modifier validOwner() {
         require(_validOwners[msg.sender] == 1, "not Authorized Mulsig User !");
         _;
     }
-   
+   function isValidFunctionSelector(TransactionType _type, bytes4 selector) private pure returns (bool) {
+    if (_type == TransactionType.AddOwner && selector == this.setOwner.selector) return true;
+    if (_type == TransactionType.RemoveOwner && selector == this.setOwner.selector) return true;
+    if (_type == TransactionType.SetParameter && selector == this.setLockHalt.selector) return true;
+    //if (_type == TransactionType.SetSalesAddress && selector == this.setSalesAddress.selector) return true;
+    return false;
+}
     function  deleteMaxPendingTx()
 
     private 
@@ -157,9 +175,8 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
          if(_pendingTransactions.length == 1 ){
                 uint txId = _pendingTransactions[0];
                 Transaction storage pendingwithdrawTx = _transactions[txId];
-                TxAddOwner storage pendingaddTx = _txaddowners[txId];
-                TxDelOwner storage pendingdelTx = _txdelowners[txId];
-                TxSetParam storage pendingsetTx = _txsetparams[txId];
+               
+                SetTransaction storage pendingsetTx = _settransactions[txId];
                 //for withdraw Txs
                 if (pendingwithdrawTx.timestamp > 0 ){
                     if(block.timestamp - pendingwithdrawTx.timestamp > maxPendingTime){
@@ -167,30 +184,61 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
                     } else revert("has pending txs yet! Please sign them first");
                    
                 }
-                //for add user Txs
-                if (pendingaddTx.timestamp> 0 ){
-                    if(block.timestamp - pendingaddTx.timestamp > maxPendingTime) {
-                         deleteAddUserTx(txId);
-                    }else revert("has pending txs yet! Please sign them first");
-                   
-                } 
-                //for del user Txs
-                if (pendingdelTx.timestamp > 0 ){
-                    if (block.timestamp - pendingdelTx.timestamp > maxPendingTime){
-                        deleteDelUserTx(txId);
-                    }else revert("has pending txs yet! Please sign them first");
-                    
-                }
-
+               
                 //for set param Txs
                 if (pendingsetTx.timestamp > 0 ){
                     if (block.timestamp - pendingsetTx.timestamp > maxPendingTime){
-                        deleteSetParamTx(txId);
-                    }else revert("has pending txs yet! Please sign them first");
-                    
+                        deleteSetTx(txId);
+                    }else revert("has pending txs yet! Please sign them first"); 
                 }
 
             }
+    }
+    function setOwner(address _owner, uint8 _status) public onlySelf {
+        _validOwners[_owner] = _status;
+    }
+    function setLockHalt(bool isLock_, bool isHalt_ ) public onlySelf{
+        locked=isLock_;
+        halted = isHalt_;
+    }
+
+    function addSetTransaction(TransactionType _type, bytes memory _data) public {
+        require(msg.sender==owner,"Only owner can set Parameters");
+        require(_data.length >= 4, "Data too short for a valid function selector");
+        require(isValidFunctionSelector(_type, bytes4(_data)), "Invalid function selector for transaction type");
+
+        uint256 transactionId = _transactionIdx++;
+
+        _settransactions[transactionId] = SetTransaction({
+            txType: _type,
+            data: _data,
+            signatureCount: 0,
+            timestamp: block.timestamp,
+            executed: false
+        });
+        _pendingTransactions.push(transactionId);
+        
+    }
+    // Function for authorized owners to sign pending transactions
+    function signSetTransaction(uint transactionId) public validOwner notExecuted(transactionId) {
+        SetTransaction memory transaction = _settransactions[transactionId];
+        require(transaction.timestamp > 0, "transaction not exist!");
+        require(!transaction.executed, "Transaction already executed");
+
+        require(!signatures[transactionId][msg.sender], "Signature already provided");
+
+        signatures[transactionId][msg.sender] = true;
+        _settransactions[transactionId].signatureCount++;
+        _settransactions[transactionId].timestamp = block.timestamp;
+        
+        if (_settransactions[transactionId].signatureCount == MIN_SIGNATURES) {
+            (bool success,) = address(this).call(_settransactions[transactionId].data);
+            require(success, "Transaction execution failed");
+
+            _settransactions[transactionId].executed = true;
+            deleteSetTx(transactionId);
+        }
+
     }
 
     function addOwner(address _owner)
@@ -200,17 +248,10 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
             require(_owner != address(0),"Zero Address Error!");
             deleteMaxPendingTx();
 
-           
-            uint256 transactionId = _transactionIdx++;
-            TxAddOwner memory txOwner;
+            TransactionType txType = TransactionType.AddOwner;
+            bytes memory data = abi.encodeWithSelector(this.setOwner.selector, _owner, 1);
+            addSetTransaction(txType, data);
             
-            txOwner.owner = _owner;
-            txOwner.timestamp = block.timestamp;
-            txOwner.signatureCount = 0;
-            _txaddowners[transactionId]=txOwner;
-            _pendingTransactions.push(transactionId);
-
-            emit TransactionCreated(_owner,  block.timestamp, transactionId);
             emit NodeEvents(block.timestamp,msg.sender, "AddValieOwner");
     }
 
@@ -219,162 +260,33 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
             deleteMaxPendingTx();
-
-            uint256 transactionId = _transactionIdx++;
-            TxDelOwner memory txOwner;
+            TransactionType txType = TransactionType.RemoveOwner;
+            bytes memory data = abi.encodeWithSelector(this.setOwner.selector, _owner, 0);
+            addSetTransaction(txType, data);
             
-            txOwner.owner = _owner;
-            txOwner.timestamp = block.timestamp;
-            txOwner.signatureCount = 0;
-            _txdelowners[transactionId]=txOwner;
-            _pendingTransactions.push(transactionId);
            
-            emit TransactionCreated(_owner,  block.timestamp, transactionId);
             emit NodeEvents(block.timestamp,msg.sender, "RemoveValieOwner");
     }
     
-    function signUserAdd(uint transactionId)
-      validOwner
-      public {
-
-            TxAddOwner storage transaction = _txaddowners[transactionId];
-
-            // Transaction must exist
-            require(address(0) != transaction.owner,  "Fee To Zero Addresses!");
-            // Creator cannot sign the transaction
-            require(msg.sender !=transaction.owner , "Can't Sign Self!" );
-            // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
-            signatures[transactionId][msg.sender] = 1;
-
-            transaction.signatureCount++;
-            transaction.timestamp= block.timestamp;
-
-            emit TransactionSigned(msg.sender, transactionId);
-           
-            if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    _validOwners[(transaction.owner)]=1;
-                    emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
-                    deleteAddUserTx(transactionId);
-            }
-    }
-    function deleteAddUserTx(uint transactionId)
-        
-        private {
-            TxAddOwner memory transaction = _txaddowners[transactionId];
-            require(transaction.timestamp > 0, "transaction not exist!");
-           
-            uint256 txLength = _pendingTransactions.length;
-            for (uint256 i = 0; i < txLength; i++) {
-                if (_pendingTransactions[i] == transactionId) {
-                    
-                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
-                   
-                    _pendingTransactions.pop();
-                    break;
-                }
-            }
-            delete _txaddowners[transactionId];
-    }
-    function signUserDel(uint transactionId)
-      validOwner
-      public {
-
-            TxDelOwner storage transaction = _txdelowners[transactionId];
-
-            // Transaction must exist
-            require(address(0) != transaction.owner,  "Fee To Zero Addresses!");
-            // Creator cannot sign the transaction
-            require(msg.sender !=transaction.owner , "Can't Sign Self!" );
-            // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
-          
-            signatures[transactionId][msg.sender] = 1;
-
-            transaction.signatureCount++;
-            transaction.timestamp= block.timestamp;
-
-            emit TransactionSigned(msg.sender, transactionId);
-           
-            if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    _validOwners[transaction.owner]=0;
-                
-                    emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
-                    deleteDelUserTx(transactionId);
-            }
-    }
-    function deleteDelUserTx(uint transactionId)
-        
-        private {
-            TxDelOwner memory transaction = _txdelowners[transactionId];
-            require(transaction.timestamp > 0, "transaction not exist!");
-           
-            uint256 txLength = _pendingTransactions.length;
-            for (uint256 i = 0; i < txLength; i++) {
-                if (_pendingTransactions[i] == transactionId) {
-                    
-                    _pendingTransactions[i] = _pendingTransactions[txLength - 1];
-                   
-                    _pendingTransactions.pop();
-                    break;
-                }
-            }
-            delete _txdelowners[transactionId];
-    }
-
+   
     function setParameters ( bool isLock_, bool isHalt_)
     public
     {
         require(msg.sender==owner,"Only owner can set Parameters");
        
         deleteMaxPendingTx();
+        TransactionType txType = TransactionType.SetParameter;
+        bytes memory data = abi.encodeWithSelector(this.setLockHalt.selector, isLock_, isHalt_);
+        addSetTransaction(txType, data);
 
-        uint256 transactionId = _transactionIdx++;
-
-        TxSetParam memory transaction;
-        
-       
-        transaction.locked_ = isLock_;
-        transaction.halted_ = isHalt_;
-        
-        transaction.timestamp = block.timestamp;
-        transaction.signatureCount = 0;
-        _txsetparams[transactionId]=transaction;
-        _pendingTransactions.push(transactionId);
-
-        emit TransactionCreated(msg.sender,  block.timestamp, transactionId);
         emit NodeEvents(block.timestamp,msg.sender, "setParamters");
     }
 
-    function signSetParam(uint transactionId)
-      validOwner
-      public {
-
-            TxSetParam storage transaction = _txsetparams[transactionId];
-
-            // Transaction must exist
-            
-            // Cannot sign a transaction more than once
-            require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
-            signatures[transactionId][msg.sender] = 1;
-
-            transaction.signatureCount++;
-            transaction.timestamp= block.timestamp;
-
-            emit TransactionSigned(msg.sender, transactionId);
-           
-            if (transaction.signatureCount >= MIN_SIGNATURES) {
-                    locked = transaction.locked_;
-                    halted = transaction.halted_;
-                    
-                    emit TransactionCompleted(msg.sender, block.timestamp, transactionId);
-                    deleteSetParamTx(transactionId);
-            }
-    }
-    function deleteSetParamTx(uint transactionId)
+   
+    function deleteSetTx(uint transactionId)
         
         private {
-            TxSetParam memory transaction = _txsetparams[transactionId];
+            SetTransaction memory transaction = _settransactions[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
            
             uint256 txLength = _pendingTransactions.length;
@@ -387,7 +299,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
                     break;
                 }
             }
-            delete _txsetparams[transactionId];
+            delete _settransactions[transactionId];
     }
 
     function getPendingTransactions()
@@ -399,12 +311,10 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     function getPendingTransaction(uint transactionId)
       view
       public
-      returns (Transaction memory, TxAddOwner memory, TxDelOwner memory, TxSetParam memory) {
+      returns (Transaction memory, SetTransaction memory) {
         Transaction storage pendingwithdrawTx = _transactions[transactionId];
-        TxAddOwner storage pendingaddTx = _txaddowners[transactionId];
-        TxDelOwner storage pendingdelTx = _txdelowners[transactionId];
-        TxSetParam storage pendingsetparamTx = _txsetparams[transactionId];
-        return (pendingwithdrawTx,pendingaddTx,pendingdelTx,pendingsetparamTx);
+        SetTransaction storage pendingsetTx = _settransactions[transactionId];
+        return (pendingwithdrawTx,pendingsetTx);
     }
     function  getValidOwner(address _owner)  view public returns (uint){
        
@@ -419,13 +329,13 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         // Creator cannot sign the transaction
         require(msg.sender !=transaction.withdrawAddress_ , "Can't Sign Self!" );
         // Cannot sign a transaction more than once
-        require(signatures[transactionId][msg.sender] != 1, "Can't Sign Again with the same Account!");
+        require(!signatures[transactionId][msg.sender], "Can't Sign Again with the same Account!");
         // no more than MIN_SIGNATURES Signs
         require(transaction.signatureCount < MIN_SIGNATURES, "MS has satisfied, No need further Sign!");
         // can not sign within once within 24 hours
-        require(block.timestamp - transaction.timestamp >= 24 hours,"Time Lockin for 24 Hours for each signers !");
+        require(block.timestamp - transaction.timestamp >= 24,"Time Lockin for 24 Hours for each signers !");
 
-        signatures[transactionId][msg.sender] = 1;
+        signatures[transactionId][msg.sender] = true;
 
         transaction.signatureCount++;
         transaction.timestamp= block.timestamp;
@@ -501,17 +411,17 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     returns (string memory) {
         require(tokenId <= _tokenIds, "ERC721Metadata: URI query for nonexistent token");
 
-        string memory _tokenURI = _tokenURIs[tokenId];
+        // string memory _tokenURI = _tokenURIs[tokenId];
        
-        return _tokenURI;
+        return nodeTokenURI;
         
     }
 
     function buyNode(
         uint256 timestamp,
         bytes32 nonce,
-        bytes32 message,
-        bytes memory signature,
+        //bytes32 message,
+        bytes calldata signature,
         address parentAddress,
         uint256 maxPrice
     ) 
@@ -522,7 +432,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         require(!halted, "Node Halted!");
         
         bytes32 challenge = getChallenge(timestamp, nonce, parentAddress, msg.sender);
-        require(message == challenge,"message not correct!");
+        //require(message == challenge,"message not correct!");
         bool isVerified = verified(publicKey,challenge, signature);
         require(isVerified, "Verify Error!");
         //require(_to == msg.sender, "User Address Error!");
@@ -542,12 +452,11 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         require(mintPrice <= maxPrice, "price overflow");
         
         ERC20Token.safeTransferFrom(msg.sender, feeAddress, mintPrice);
-        _mint(msg.sender, newItemId);
-        //_setTokenURI(newItemId, nodeTokenURI);
-        _tokenURIs[newItemId] = nodeTokenURI;
+
+        _mint(address(this), newItemId);
+
         tokenOwner[newItemId] = msg.sender;
 
-        transferFrom(msg.sender, address(this), newItemId);
         _mintedAddresses[msg.sender]=true;
         
         TokenInfo memory token = TokenInfo({
@@ -579,7 +488,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     notContract
     {
         require(tokenOwner[tokenId]== msg.sender,"Token Owner not Correct!");
-        require(tokenOwner[tokenId] == receiver, "Token receiver not Correct!");
+        //require(tokenOwner[tokenId] == receiver, "Token receiver not Correct!");
         require(!locked, "Token Can not be fetch currently!");
         ERC721(this).safeTransferFrom(address(this), receiver, tokenId);
         emit NodeStatusChange(msg.sender,parent[msg.sender],tokenId, "Fetch", block.timestamp);    
@@ -602,10 +511,11 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         return _mintedAddresses[userAddress];
     }
 
-    function getNodesInfo()public view returns(uint256,uint256,uint256)
+    function getNodesInfo()public view returns(uint256,uint256,uint256,uint256)
     {
         uint256 currentTokenId = _tokenIds;
-        return (mintPrice, currentTokenId+1, currentTokenId);
+        uint256 nextPrice = calculatePrice(currentTokenId+1);
+        return (nextPrice, currentTokenId+1, currentTokenId,mintPrice);
     }
     function uint256ToString(uint256 value) public pure returns (string memory) {
             if (value == 0) {
@@ -636,68 +546,28 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
        
         return challenge;   
     }
-    
-    function verified(
+     function verified(
         address expectedSigner,
         bytes32 messageHash,
         bytes memory signature
-    ) public  pure returns (bool) {     
-        bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
-        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
-        require(recoveredSigner == expectedSigner, "Invalid signature");
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        assembly {
-            r := mload(add(signature, 32))
-            s := mload(add(signature, 64))
-            v := byte(0, mload(add(signature, 96)))
-        }
-        require(ecrecover(ethSignedMessageHash, v, r, s) == expectedSigner, "Invalid signature malleability");
-
-        return true;
-    }
-
-    function checkVerify(
-        address signer,
-        bytes32 message,
-        bytes memory signature
-    ) public pure returns (address,address)
-    {
+    ) public pure returns (bool) {
+        // Compute the message hash that was originally signed, prefixed according to the Ethereum standard.
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+        //bytes32 ethSignedMessageHash = getEthSignedMessageHash(messageHash);
         
-        (bytes32 r, bytes32 s, uint8 v) = splitSignature(signature);
-        bytes32 ethSignedMessageHash = getEthSignedMessageHash(message);
-        address recovered = ecrecover(ethSignedMessageHash, v, r, s);
+        // Recover the signer address from the signature using the ECDSA library.
+        address recoveredSigner = ethSignedMessageHash.recover(signature);
 
-        address recoveredSigner = ECDSA.recover(ethSignedMessageHash, signature);
-        require(recoveredSigner == signer, "Invalid signature");
-
-       return (recoveredSigner, recovered);
+        // Return true if the recovered signer matches the expected signer, otherwise false.
+        return (recoveredSigner == expectedSigner);
     }
+
    
     function getEthSignedMessageHash(bytes32 _messageHash) private  pure returns (bytes32) {
       
         return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
     }
 
-    function splitSignature(bytes memory sig)
-    internal
-    pure
-    returns (bytes32 r, bytes32 s, uint8 v)
-    {
-        require(sig.length == 65, "invalid signature length");
-
-        assembly {
-            r := mload(add(sig, 32))
-            s := mload(add(sig, 64))   
-            v := byte(0, mload(add(sig, 96)))
-        }
-
-        if (v < 27) {
-            v += 27;
-        }
-    }
 
     //not contract address
     modifier notContract() {
@@ -721,5 +591,6 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         uint256 priceLevel = ((id-1) / ID_INCREMENT) + 1;
         return priceLevel * PRICE_INCREMENT * 10** tokenDecimals;
     }
+
       
 }
