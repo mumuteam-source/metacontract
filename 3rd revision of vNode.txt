@@ -1,0 +1,26 @@
+1 CTN-01 | Incorrect Timestamp Difference Applied
+Medium
+Recommendation
+It is recommended to employ a clearer representation, such as "24 hours," to denote the time interval.
+Modified:
+added "Hours" after the time duration;
+
+CTN-02 | Wrong Visibility of `addSetTransaction`
+Medium
+Recommendation
+It is recommended to adjust the visibility of the addSetTransaction() function appropriately to mitigate potential risks.
+Modified:
+change the public to private of function addSetTransaction();
+
+CTN-03 | Unused Variables In `Transaction` Structure
+Optimization
+Recommendation
+We recommend the team clean the unused code.
+Modified:
+we remove the unused parameters ( locked_, nodeCount_ and mintPrice_) of Struct Transaction.
+
+CTP-05 | Potential Optimization to Multi-Sign Mechanism
+Optimization
+we Optimize the setSalesAddress function as the addOwner/removeOwner and setParameters;
+but we do not remove these functions, as we should use them to manage the parameters on-chain;
+and our dapp is developed for users, but not for managers, so we need these functions.
