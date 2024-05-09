@@ -1,0 +1,15 @@
+1. CPN-02 | Fixed `MIN_SIGNATURES`Can Lead to a Deadlock Situation Where No Transactions can be Executed
+
+Medium
+Recommendation
+We recommend implementing a mechanism to manually adjust MIN_SIGNATURES and automatically adjust MIN_SIGNATURES in the setOwner function if the number of valid owners is lower than MIN_SIGNATURES.
+
+Modified：
+We add an array named validOwners, will push or pop address whan add or remove validOwner seperately when setOwner executed;
+and then, check the length of the validOwners array when sign the transactions, if the length
+less than MIN_SIGNATURES, the sign will executed when the sign count up to the length, otherwise, sign count sould reached the  MIN_SIGNATURES as the valid owners more then 3;
+
+2.CPN-01 | Transaction Ready to Be Executed Can Be Deleted By Adding A New Transaction    
+Discussion
+Answer:
+Yes, this design is intended. One time, these is only ONE pending Tx waiting for sign, if 96 hours later, the tx has not beed signed, it will be removed when another sign tx created!

@@ -41,7 +41,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     mapping (address => NodeInfo) public nodes;
 
     uint256 constant public PRICE_INCREMENT = 500;//500
-    uint256 constant public ID_INCREMENT = 5; //500
+    uint256 constant public ID_INCREMENT = 500; //500
     uint256 constant public MAX_ID = 50000;
 
     address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);
@@ -107,6 +107,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     uint256 public constant maxPendingTime = 96 hours; // hours
 
     uint constant MIN_SIGNATURES = 3;
+    address[] public validOwners;
     uint private _transactionIdx;
 
     constructor(
@@ -124,6 +125,11 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
        _validOwners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
        _validOwners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
        _validOwners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
+
+       validOwners.push(address(0x486d3D3e599985B00547783E447c2d799d7d2eE5));
+       validOwners.push(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
+       validOwners.push(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
+
     }
 
     function onERC721Received(address, address, uint256, bytes calldata)
@@ -229,6 +235,20 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
 
     function setOwner(address _owner, uint8 _status) public onlySelf {
         _validOwners[_owner] = _status;
+
+        if(_status == 0){
+             uint256 ownerLength = validOwners.length;
+            for (uint256 i = 0; i < ownerLength; i++) {
+                if (validOwners[i] == _owner) { 
+                    validOwners[i] = validOwners[ownerLength - 1];
+                    validOwners.pop();
+                    break;
+                }
+            }
+        }else if(_status == 1) {
+            validOwners.push(_owner);
+        }
+        
     }
     function setLockHalt(bool isLock_, bool isHalt_ ) public onlySelf{
         locked=isLock_;
@@ -273,8 +293,9 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         signatures[transactionId][msg.sender] = true;
         _settransactions[transactionId].signatureCount++;
         _settransactions[transactionId].timestamp = block.timestamp;
-        
-        if (_settransactions[transactionId].signatureCount == MIN_SIGNATURES) {
+        uint ownerCount =  validOwners.length;
+        uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
+        if (_settransactions[transactionId].signatureCount == signCount) {
                 if (transaction.txType == TransactionType.SetSalesAddress){
               _settransactions[transactionId].readyForExecutionTimestamp = block.timestamp + observationPeriod;  
            }
@@ -336,9 +357,9 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         SetTransaction memory pendingsetTx = _settransactions[transactionId];
         return pendingsetTx;
     }
-    function  getValidOwner(address _owner)  view public returns (uint){
+    function  getValidOwner(address _owner)  view public returns (uint,address[] memory){
 
-        return _validOwners[_owner];
+        return (_validOwners[_owner],validOwners);
     }
 
     
