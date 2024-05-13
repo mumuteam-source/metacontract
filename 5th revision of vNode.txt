@@ -1,0 +1,26 @@
+1. TPN-01 | `validOwners` Array Mishandles Duplicate Elements
+Medium
+Recommendation
+To maintain the integrity of other functionalities, it's advisable to conduct a duplicate check when adding new elements to an array. The team can use the '_validOwners[_owner]' to check if this '_owner' is already a valid owner.
+Modified：
+We add a check in the addOwner and removeOwner for the user is already a valid user or not when adding or removeing
+in the addOwner:
+
+we add this check:
+
+ require(_validOwners[_owner]!=1,"This Owner Already a Valid Owner!");
+
+in the removeOwner:
+
+we add this check:
+
+     require(_validOwners[_owner]==1,"This Owner Not a Valid Owner!");
+
+______________________________________
+
+TPN-02 | Possible Function Blockage Due to validOwners Array Mishandling
+Medium
+Recommendation
+It is recommended to consider the presence of duplicate elements when adding or removing elements from the validOwners array and choose the appropriate operation accordingly.
+Modified:
+Modified the same as the TPN-01 pending

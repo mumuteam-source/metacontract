@@ -155,7 +155,9 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     function addOwner(address _owner)
         public 
         {
+            
             require(msg.sender==owner,"Only owner can set Parameters");
+            require(_validOwners[_owner]!=1,"This Owner Already a Valid Owner!");
             require(_owner != address(0),"Zero Address Error!");
            
             TransactionType txType = TransactionType.AddOwner;
@@ -168,6 +170,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     function removeOwner(address _owner)
         public {
             require(msg.sender==owner,"Only owner can set Parameters");
+            require(_validOwners[_owner]==1,"This Owner Not a Valid Owner!");
             require(_owner != address(0),"Zero Address Error!");
             
             TransactionType txType = TransactionType.RemoveOwner;
