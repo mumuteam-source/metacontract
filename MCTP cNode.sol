@@ -13,7 +13,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 
-contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
+contract MetaCraftContributor is ERC721, IERC721Receiver,ReentrancyGuard{
     // ERC20 token used for minting NFT
     using ECDSA for bytes32;
     IERC20 public immutable ERC20Token;
@@ -39,10 +39,6 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     // tokenOwner
     mapping (uint256=>address) public tokenOwner;
     mapping (address => NodeInfo) public nodes;
-
-    uint256 constant public PRICE_INCREMENT = 500;//500
-    uint256 constant public ID_INCREMENT = 500; //500
-    uint256 constant public MAX_ID = 50000;
 
     address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);
     address payable  public feeAddress = payable(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
@@ -114,12 +110,13 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         string memory _name,
         string memory _symbol,
         address _erc20Token,
-        uint256 _decimals
-        //uint256 _mintPrice
+        uint256 _decimals,
+        uint256 _mintPrice
     ) ERC721(_name, _symbol) {
         ERC20Token = IERC20(_erc20Token);
         tokenDecimals = _decimals;
         owner = msg.sender;
+        mintPrice = _mintPrice*10**_decimals;
        
 
        _validOwners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
@@ -404,20 +401,16 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         require(isVerified, "Verify Error!");
         //require(_to == msg.sender, "User Address Error!");
         require(!_mintedAddresses[msg.sender], "Address already minted an NFT");
-        if(parentAddress!=address(0)){
-            require(_mintedAddresses[parentAddress],"parent Not Minted Already");
-            if(parent[msg.sender]==address(0)) parent[msg.sender] = parentAddress;
-            else require(parent[msg.sender] == parentAddress, "parentAddress Error!");
-        }else if(parentAddress==address(0)){
-            parent[msg.sender] = address(0);
-        }
+        require(parentAddress!=address(0),"Parent Address needed!");
+        //require(_mintedAddresses[parentAddress],"parent Not Minted Already");
+        require(!_mintedAddresses[parentAddress],"Contributor can not be Parent!");
         
-        
+        parent[msg.sender] = parentAddress;
+                
+        require(mintPrice <= maxPrice, "price overflow");
+
         uint256 newItemId =++_tokenIds;
 
-        mintPrice = calculatePrice(newItemId);
-        require(mintPrice <= maxPrice, "price overflow");
-        
         ERC20Token.safeTransferFrom(msg.sender, feeAddress, mintPrice);
 
         _mint(address(this), newItemId);
@@ -478,31 +471,12 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         return _mintedAddresses[userAddress];
     }
 
-    function getNodesInfo()public view returns(uint256,uint256,uint256,uint256)
+    function getNodesInfo()public view returns(uint256,uint256,uint256)
     {
         uint256 currentTokenId = _tokenIds;
-        uint256 nextPrice = calculatePrice(currentTokenId+1);
-        return (nextPrice, currentTokenId+1, currentTokenId,mintPrice);
+        return (currentTokenId+1, currentTokenId,mintPrice);
     }
-    function uint256ToString(uint256 value) public pure returns (string memory) {
-            if (value == 0) {
-                return "0";
-            }
-            uint256 temp = value;
-            uint256 digits;
-            while (temp != 0) {
-                temp /= 10;
-                digits++;
-            }
-            bytes memory buffer = new bytes(digits);
-            while (value != 0) {
-                digits -= 1;
-                buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-                value /= 10;
-            }
-            return string(buffer);
-    }
-     //get Challenge
+    //get Challenge
     function getChallenge(uint256 timestamp,
                               bytes32 nonce, 
                             address parentAddress,
@@ -550,13 +524,5 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         return size > 0;
     }
 
-    function calculatePrice(uint256 id) public view   returns (uint256) {
-      
-        require(id<= MAX_ID,"ID exceeds maximum limit");
-
-        uint256 priceLevel = ((id-1) / ID_INCREMENT) + 1;
-        return priceLevel * PRICE_INCREMENT * 10** tokenDecimals ;
-       
-    }
        
 }

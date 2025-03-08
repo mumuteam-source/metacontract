@@ -1,0 +1,9 @@
+MTN-01 | Potential Unintended Reward Loss During Unstake Operation
+Recommendation
+If the team is still using this contract and this design is unintended, we recommend the team inform the user about this potential reward loss and guide them to unstake all stake.tokenAmount if possible.
+
+Not Modified:
+
+as the _tokenAmount parameter in the function UnStake() will be send the same as the stake.tokenAmount
+from the frontend, we Need Not to modifiy this logic in the contract;
+

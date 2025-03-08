@@ -1,0 +1,17 @@
+MC2-01 | Fixed `MIN_SIGNATURES` in `executeSetTransaction` Can Lead to a Deadlock Situation Where No Transactions can be Executed
+Medium
+Recommendation
+If the team is still using the current contract or similar design in other contracts, we recommend paying close attention to the number of _validOwners and ensure it never falls below three. To fully resolve this issue, we recommend refining the mechanism for adjusting minimum signatures required.
+
+Modified：
+1. add require in the RemoveOwner() function for validowners count should be more than 3;
+
+uint ownerCount =  validOwners.length;
+require(ownerCount - 1 >= MIN_SIGNATURES,"valid Owners can not less then 3! ");
+
+2. change the require check the signatureCount should more than or equal to the validowner count;
+
+uint ownerCount =  validOwners.length;
+uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
+require(transaction.signatureCount >= signCount,"Signs Not Satisfied");
+

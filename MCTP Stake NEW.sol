@@ -142,6 +142,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 
     function removeOwner(address _owner)
         public {
+            uint ownerCount =  validOwners.length;
+            require(ownerCount - 1 >= MIN_SIGNATURES,"valid Owners can not less then 3! ");
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
             deleteMaxPendingTx();
@@ -349,7 +351,9 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     validOwner
     public  {
         Transaction storage transaction = _transactions[transactionId];
-        require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
+        uint ownerCount =  validOwners.length;
+        uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
+        require(transaction.signatureCount >= signCount,"Signs Not Satisfied");
         require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
         require(block.timestamp >= transaction.readyForExecutionTimestamp, "Transaction is not ready for execution");
 
