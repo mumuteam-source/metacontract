@@ -125,7 +125,7 @@ contract MetaCraftContributor is ERC721, IERC721Receiver,ReentrancyGuard{
 
        validOwners.push(address(0x486d3D3e599985B00547783E447c2d799d7d2eE5));
        validOwners.push(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
-       validOwners.push(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
+       validOwners.push(address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4));
 
     }
 
@@ -295,9 +295,7 @@ contract MetaCraftContributor is ERC721, IERC721Receiver,ReentrancyGuard{
         signatures[transactionId][msg.sender] = true;
         _settransactions[transactionId].signatureCount++;
         _settransactions[transactionId].timestamp = block.timestamp;
-        uint ownerCount =  validOwners.length;
-        uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
-        if (_settransactions[transactionId].signatureCount == signCount) {
+        if (_settransactions[transactionId].signatureCount == MIN_SIGNATURES) {
                 if (transaction.txType == TransactionType.SetSalesAddress){
               _settransactions[transactionId].readyForExecutionTimestamp = block.timestamp + observationPeriod;  
            }
@@ -315,9 +313,8 @@ contract MetaCraftContributor is ERC721, IERC721Receiver,ReentrancyGuard{
     validOwner
     public  {
         SetTransaction storage transaction = _settransactions[transactionId];
-        uint ownerCount =  validOwners.length;
-        uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
-        require(transaction.signatureCount >= signCount,"Signs Not Satisfied");
+        
+        require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
         require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
         require(block.timestamp >= transaction.readyForExecutionTimestamp, "Transaction is not ready for execution");
 
