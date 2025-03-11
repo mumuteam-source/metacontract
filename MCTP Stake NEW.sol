@@ -177,11 +177,11 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 
             transaction.signatureCount++;
             transaction.timestamp= block.timestamp;
-
             emit TransactionSigned(msg.sender, transactionId);
-           
+            
             if (transaction.signatureCount >= MIN_SIGNATURES) {
                     _owners[(transaction.owner)]=1;
+                    validOwners.push(transaction.owner);
                     emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
                     deleteAddUserTx(transactionId);
             }
@@ -224,7 +224,17 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 
             emit TransactionSigned(msg.sender, transactionId);
            
+               
             if (transaction.signatureCount >= MIN_SIGNATURES) {
+
+                uint256 ownerLength = validOwners.length;
+                for (uint256 i = 0; i < ownerLength; i++) {
+                    if (validOwners[i] == transaction.owner) { 
+                        validOwners[i] = validOwners[ownerLength - 1];
+                        validOwners.pop();
+                        break;
+                    }
+                }
                     _owners[transaction.owner]=0;
                 
                     emit TransactionCompleted(transaction.owner, block.timestamp, transactionId);
@@ -236,7 +246,6 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         private {
             TxDelOwner memory transaction = _txdelowners[transactionId];
             require(transaction.timestamp > 0, "transaction not exist!");
-           
             uint256 txLength = _pendingTransactions.length;
             for (uint256 i = 0; i < txLength; i++) {
                 if (_pendingTransactions[i] == transactionId) {
@@ -279,6 +288,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     uint256 public constant SECONDS_IN_DAY = 86400;
 
     uint constant MIN_SIGNATURES = 3;
+    address[] public validOwners;
     uint private _transactionIdx;
 
     event StakeEvents(
@@ -296,9 +306,13 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         require(_stakeTokenAddress != address(0), "StakeTokenAddress cannot be the zero address");
         stakeTokenAddress = _stakeTokenAddress;
 
-       _owners[address(0xce44C139234E2E8146c82eF42dC3d9fc39833361)] = 1;
-       _owners[address(0xd0c06ced3DFaA617c105166BB5cADc317DaaA41B)] = 1;
+       _owners[address(0x486d3D3e599985B00547783E447c2d799d7d2eE5)] = 1;
+       _owners[address(0x498d09597e35f00ECaB97f5A10F6369aDde00364)] = 1;
        _owners[address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4)] = 1;
+
+       validOwners.push(address(0x486d3D3e599985B00547783E447c2d799d7d2eE5));
+       validOwners.push(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
+       validOwners.push(address(0xa1813Fb2A6882E8248CD4d4C789480F50CAf7ca4));
     }
 
     function getPendingTransactions()
@@ -351,9 +365,8 @@ contract MCTPStake is Pausable, ReentrancyGuard {
     validOwner
     public  {
         Transaction storage transaction = _transactions[transactionId];
-        uint ownerCount =  validOwners.length;
-        uint signCount = ownerCount>=3?MIN_SIGNATURES:ownerCount;
-        require(transaction.signatureCount >= signCount,"Signs Not Satisfied");
+        
+        require(transaction.signatureCount >= MIN_SIGNATURES,"Signs Not Satisfied");
         require(transaction.readyForExecutionTimestamp>0,"Transaction is not ready for execution");
         require(block.timestamp >= transaction.readyForExecutionTimestamp, "Transaction is not ready for execution");
 
