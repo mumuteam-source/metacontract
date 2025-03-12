@@ -114,6 +114,11 @@ contract MetaCraftContributor is ERC721, IERC721Receiver,ReentrancyGuard{
         uint256 _mintPrice
     ) ERC721(_name, _symbol) {
         ERC20Token = IERC20(_erc20Token);
+        (bool success, bytes memory data) = _erc20Token.staticcall(abi.encodeWithSignature("decimals()"));
+        if (success && data.length == 32) {
+            uint8 actualDecimals = abi.decode(data, (uint8));
+            require(actualDecimals == _decimals, "Provided decimals do not match token decimals");
+        }
         tokenDecimals = _decimals;
         owner = msg.sender;
         mintPrice = _mintPrice*10**_decimals;

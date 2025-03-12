@@ -124,6 +124,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         {
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
+            require(_owners[_owner] !=1, "Already validowner!");
             deleteMaxPendingTx();
 
            
@@ -146,6 +147,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
             require(ownerCount - 1 >= MIN_SIGNATURES,"valid Owners can not less then 3! ");
             require(msg.sender==owner,"Only owner can set Parameters");
             require(_owner != address(0),"Zero Address Error!");
+            require(_owners[_owner]==1, "not valid owner!");
             deleteMaxPendingTx();
 
             uint256 transactionId = _transactionIdx++;
@@ -569,7 +571,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         public
         nonReentrant //anti re-entrancy
         whenNotPaused
-        notContract(msg.sender) //anti contract address
+        notContract() //anti contract address
         virtual
     {
         
@@ -635,7 +637,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         public
         nonReentrant //anti re-entranc
         //whenNotPaused
-        notContract(msg.sender) //anti contract address
+        notContract() //anti contract address
         virtual
     {
         require(stakeTokenAddress == _itemToken,"Stake Token Address Error!");
@@ -692,7 +694,7 @@ contract MCTPStake is Pausable, ReentrancyGuard {
         public
         nonReentrant //anti re-entrancy
         whenNotPaused
-        notContract(msg.sender) //anti contract address
+        notContract() //anti contract address
         virtual
     {
         require(stakeTokenAddress == _itemToken,"Stake Token Address Error!");
@@ -777,15 +779,20 @@ contract MCTPStake is Pausable, ReentrancyGuard {
 
     //not contract address
     //codesize
-    modifier notContract(address _address) {
-            uint256 codeSize;
-            assembly {
-                codeSize := extcodesize(_address)
-            }
-            require(codeSize == 0, "Contracts are not allowed");
-            _;
+    // modified for audit issue 2025-03-12
+    modifier notContract() {
+    require((!_isContract(msg.sender)) && (msg.sender == tx.origin), "contract not allowed");
+    _;
     }
-    
+
+    function _isContract(address addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
+    }
+        
  
    
 }

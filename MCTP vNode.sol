@@ -44,7 +44,7 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
     uint256 constant public ID_INCREMENT = 500; //500
     uint256 constant public MAX_ID = 50000;
 
-    address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);
+    address public publicKey = address(0xEe8b45a0c599e8E6512297f99687BF5FE3359147);// will change when upgrade!
     address payable  public feeAddress = payable(address(0x498d09597e35f00ECaB97f5A10F6369aDde00364));
     // Event emitted when an NFT is minted
 
@@ -118,7 +118,15 @@ contract MetaCraftVNode is ERC721, IERC721Receiver,ReentrancyGuard{
         //uint256 _mintPrice
     ) ERC721(_name, _symbol) {
         ERC20Token = IERC20(_erc20Token);
+        
+        (bool success, bytes memory data) = _erc20Token.staticcall(abi.encodeWithSignature("decimals()"));
+        if (success && data.length == 32) {
+            uint8 actualDecimals = abi.decode(data, (uint8));
+            require(actualDecimals == _decimals, "Provided decimals do not match token decimals");
+        }
         tokenDecimals = _decimals;
+
+
         owner = msg.sender;
        
 

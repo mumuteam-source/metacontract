@@ -1,0 +1,40 @@
+MCT-23 | Ineffective `notContract()` Check
+Modified:
+Change the isContract modifier as Recommendation of certik team:
+modifier notContract() {
+    require((!_isContract(msg.sender)) && (msg.sender == tx.origin), "contract not allowed");
+    _;
+}
+
+function _isContract(address addr) internal view returns (bool) {
+    uint256 size;
+    assembly {
+        size := extcodesize(addr)
+    }
+    return size > 0;
+}
+________________________________
+59A-01 | Missing Input Validations
+
+Modified:
+1. Decimals check:
+add decimals check in constructor:
+(bool success, bytes memory data) = _erc20Token.staticcall(abi.encodeWithSignature("decimals()"));
+if (success && data.length == 32) {
+    uint8 actualDecimals = abi.decode(data, (uint8));
+    require(actualDecimals == _decimals, "Provided decimals do not match token decimals");
+}
+2. valid Owner Check at add or remove Owner:
+addOwner:
+
+require(_owners[_owner] !=1, "Already validowner!");
+
+removeOwner:
+require(_owners[_owner]==1, "not valid owner!");
+
+
+_______________________________________
+MCP-22 | Potential Cross-Chain/Cross-Contract Replay Attack
+Modified:
+
+We will change the publicKey when deploy new version for this issue!
